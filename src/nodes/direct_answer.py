@@ -1,16 +1,9 @@
-"""Direct-answer node — Mode 1: answer straight from the LLM, NO vector search.
-
-This is the whole point of the "no retrieval" branch: when the router judges a question
-easy, we skip FAISS entirely and let the model answer from its own knowledge. There are
-no citations because nothing was retrieved.
-"""
-
 from __future__ import annotations
 
 try:
     from src.nodes.llm import chat
     from src.state import RAGState
-except ImportError:  # running from inside src/
+except ImportError:
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
 
@@ -22,7 +15,6 @@ any retrieved document."""
 
 
 def direct_answer(state: RAGState) -> RAGState:
-    """Answer the question directly, with no retrieval and no citations."""
     answer = chat(_SYSTEM, state["question"])
     trace = list(state.get("trace", []))
     trace.append("direct_answer (no retrieval)")

@@ -1,0 +1,24 @@
+# Adaptive RAG (local) — pinned to versions known to work together on Python 3.11–3.13
+
+# Orchestration
+langgraph==0.2.60
+langchain-core==0.3.28
+
+# LLM calls (routing, decompose, generate, critique)
+groq==0.13.1
+
+# Embeddings — fully local
+sentence-transformers==3.3.1
+
+# Vector store
+faiss-cpu==1.9.0.post1
+
+# PDF parsing
+PyMuPDF==1.25.1
+
+# Frontend
+streamlit==1.41.1
+
+# Utilities
+python-dotenv==1.0.1
+numpy==2.2.1

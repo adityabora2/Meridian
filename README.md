@@ -1,4 +1,4 @@
-# Meredian
+# Meridian
 
 **An Adaptive RAG System — Status: Currently Building**
 

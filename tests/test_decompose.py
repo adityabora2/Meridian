@@ -37,10 +37,31 @@ def test_whitespace_only_response_falls_back():
     assert result == ["orig question"]
 
 
+def test_strips_leading_numbering_and_bullets():
+    raw = "1. First question?\n2) Second question?\n- Third question?\n* Fourth question?"
+    result = _parse_sub_questions(raw, fallback="orig question")
+    assert result == [
+        "First question?",
+        "Second question?",
+        "Third question?",
+    ]
+
+
+def test_preserves_internal_hyphens():
+    raw = "What is self-attention?\nHow does multi-head attention work?"
+    result = _parse_sub_questions(raw, fallback="orig question")
+    assert result == [
+        "What is self-attention?",
+        "How does multi-head attention work?",
+    ]
+
+
 if __name__ == "__main__":
     test_parses_multiple_lines()
     test_strips_blank_lines()
     test_caps_at_three()
     test_empty_response_falls_back_to_original_question()
     test_whitespace_only_response_falls_back()
+    test_strips_leading_numbering_and_bullets()
+    test_preserves_internal_hyphens()
     print("=== all decompose parsing tests PASSED ===")

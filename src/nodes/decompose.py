@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 try:
     from src.nodes.llm import chat
     from src.state import RAGState
@@ -20,9 +22,15 @@ Rules:
 
 _MAX_SUB_QUESTIONS = 3
 
+# Strips a leading numbering/bullet marker (e.g. "1. ", "2) ", "- ", "* ") in case
+# the LLM ignores the "no numbering, no bullets" instruction — keeps decompose's
+# fallback handling symmetric with critique.py's claim-bullet stripping, since both
+# outputs land as raw FAISS query text in search_node.
+_LEADING_MARKER_RE = re.compile(r"^(?:\d+[.)]|[-*])\s*")
+
 
 def _parse_sub_questions(raw: str, *, fallback: str) -> list[str]:
-    lines = [line.strip() for line in raw.strip().splitlines()]
+    lines = [_LEADING_MARKER_RE.sub("", line.strip()) for line in raw.strip().splitlines()]
     questions = [line for line in lines if line]
     if not questions:
         return [fallback]

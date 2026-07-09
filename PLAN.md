@@ -138,21 +138,35 @@ Build the nodes that make **Mode 1 and Mode 2** work (spec's priority).
   `critique_clean`, `unsupported_claims`) the Phase-5 conditional edge will branch on.
 - **Log:** BUILD_LOG entry 9.
 
-## Phase 5 — Assemble the graph (`src/graph.py`)  ☐  *(the core deliverable)*
-- Define the shared **state** (question, route, sub-questions, retrieved chunks, draft
-  answer, citations, critique result, **iteration counter**, mode label).
-- Wire nodes into a `StateGraph`:
+## Phase 5 — Assemble the graph (`src/graph.py`)  ☑  *(the core deliverable)*
+- Shared **state** (`src/state.py`'s `RAGState`, unchanged from Phase 3) is used as-is
+  with LangGraph's default overwrite merge semantics (no `Annotated` reducers needed —
+  every node already returns its complete computed value per field).
+- Nodes wired into a `StateGraph` exactly as planned:
   - router → conditional branch to `direct_answer` | `search` | `decompose`.
   - Mode 2: search → generate → END.
   - Mode 3: decompose → search → generate → critique →
-    **conditional edge**: `clean` → END; `unsupported` **and** `iterations < 3` → back to
-    search; else (cap hit) → END.
-- The **3-iteration cap** enforced in state + branch function so the loop always terminates.
-- **Test:** compile the graph; dry-run Modes 1 & 2 end-to-end; run a hard question and
-  confirm the loop iterates then exits at the cap.
-- **Exit check:** graph compiles; all three modes run; loop provably terminates ≤3 passes.
-- **Log:** BUILD_LOG entry — explain the conditional edge + cap clearly (interview-ready).
-- **⏸ PAUSE for your review before Phase 6.**
+    **conditional edge**: `clean` → END; `unsupported` **and** `iterations < 3` → a
+    small inline `prepare_retry` glue node (sets `sub_questions = unsupported_claims`)
+    → back to search; else (cap hit) → END.
+- The **3-iteration cap** enforced via `config.MAX_ITERATIONS` read in the conditional
+  edge function — no new counter; `search_node` already increments `iterations` every
+  call (Phase 3, unchanged).
+- **Live dry-run results — done, all three modes verified:**
+  - **Mode 1** ("What is a vector database?"): routed `easy`, answered directly,
+    `citations: []`, trace = `router → direct_answer` only.
+  - **Mode 2** ("According to the BERT paper, what pretraining tasks does BERT use?"):
+    routed `medium`, correctly identified MLM + NSP with a citation into `bert.pdf`
+    p8, `iterations: 1`, trace = `router → search → generate` only.
+  - **Mode 3** ("Compare how BERT and the Transformer paper each handle positional
+    information..."): routed `hard`, looped through `decompose → search → generate →
+    critique` then `prepare_retry → search → generate → critique` **twice more**,
+    hit the cap at exactly `iterations: 3` (never more — the trace shows exactly 3
+    `search` entries), terminated with `critique_clean: False` (expected cap-hit
+    outcome, not a bug) and a 6-citation answer spanning both papers.
+- **Exit check:** met — graph compiles, all three modes run correctly, loop provably
+  terminated at exactly 3 passes on a genuinely hard question.
+- **Log:** BUILD_LOG entry 10.
 
 ## Phase 6 — Streamlit UI (`app.py`)  ☐
 - Text input + **Run** button; calls the compiled graph directly (no API layer).

@@ -211,3 +211,71 @@ dependency installed, bug hit + resolved, test run. Factual and brief.
 - **Files:** `src/nodes/decompose.py`, `src/nodes/critique.py`, `tests/test_decompose.py`,
   `tests/test_critique.py` (all new).
 - **Deviation:** none.
+
+---
+
+### 10 — Phase 5: graph assembly (`src/graph.py`) — the core deliverable
+- **What:** Wired all six existing nodes (`router`, `direct_answer`, `search`,
+  `generate`, `decompose`, `critique` — none modified) into a compiled LangGraph
+  `StateGraph`, executed via subagent-driven development (branch functions, then full
+  assembly, then live verification, each independently reviewed):
+  - `route_from_router(state) -> str` — reads `state["route"]`, returns
+    `"direct_answer"` / `"search"` / `"decompose"`.
+  - `route_from_critique(state) -> str` — reads `state["critique_clean"]` and
+    `state["iterations"]` against `config.MAX_ITERATIONS`; returns `"prepare_retry"`
+    or `"end"`. Boundary-tested: `iterations == 2` (→ retry allowed) vs.
+    `iterations == 3` (→ cap hit, ends) — the single most safety-critical branch in
+    the whole phase, since it's what guarantees the Mode 3 loop terminates.
+  - `prepare_retry(state) -> RAGState` — a new one-line glue node, inline in
+    `graph.py` (not under `src/nodes/`, since it makes no Groq call): sets
+    `sub_questions = unsupported_claims` so `search_node` searches specifically for
+    the evidence critique found missing, rather than blindly repeating the original
+    sub-questions.
+  - `build_graph() -> CompiledStateGraph` — registers all 7 nodes (6 existing + 1
+    new), wires router's conditional edge, the linear Mode 2 path, the Mode 3 path,
+    an inline `generate`→`critique`-or-`END` branch keyed on whether
+    `sub_questions` is set (distinguishes Mode 2 from Mode 3 without adding new
+    state), and critique's conditional retry/end edge.
+- **Why:** Phase 5 per PLAN.md — described as "the core deliverable." Unblocks Phase
+  6 (Streamlit UI, which calls the compiled graph directly).
+- **Design decisions:**
+  - **Plain `TypedDict` overwrite semantics, no `Annotated` reducers** on any
+    `RAGState` field. Every node already does its own read-modify-write internally
+    (e.g. `search_node` returns the full pooled+deduped list, not just new hits) —
+    adding a reducer would double-accumulate on top of that.
+  - **No new iteration counter.** `search_node` (Phase 3, unchanged) already
+    increments `state["iterations"]` on every call, and the router (unchanged)
+    already resets it to `0` per run — the cap check just reads the existing field.
+  - **`prepare_retry` kept out of `src/nodes/`** since it's pure graph-wiring glue,
+    not a node with independent LLM-calling responsibility — keeps the `src/nodes/`
+    directory reserved for actual Groq-calling nodes.
+- **Tests:** Offline branch-function unit tests (7 cases: all 3 router branches, plus
+  clean/retry/cap-hit/boundary cases for critique, including the safety-critical
+  `iterations == MAX_ITERATIONS - 1` vs. `== MAX_ITERATIONS` boundary) — all
+  **PASSED**. Both task diffs independently reviewed (spec compliance + code
+  quality); both **Approved**. Task 2's reviewer specifically traced the full
+  `prepare_retry → search → generate → critique` cycle against `search.py` and
+  `critique.py` to confirm no dangling edges, correct use of the `END` sentinel
+  object (not a string), and correct iteration-counter accumulation across cycles —
+  no Critical/Important findings.
+- **Live end-to-end verification (all 3 modes):**
+  - **Mode 1** — "What is a vector database?" → routed `easy`, answered directly, zero
+    citations, trace = `router → direct_answer` only.
+  - **Mode 2** — "According to the BERT paper, what pretraining tasks does BERT use?"
+    → routed `medium`, correctly answered MLM + NSP with a citation into `bert.pdf`
+    page 8, `iterations: 1`, trace = `router → search → generate` only (no
+    decompose/critique).
+  - **Mode 3** — "Compare how BERT and the Transformer paper each handle positional
+    information, and explain any tradeoffs." → routed `hard`, looped
+    `decompose → search → generate → critique` then
+    `prepare_retry → search → generate → critique` **twice more**, hit the cap at
+    exactly `iterations: 3` (trace shows exactly 3 `search` entries, never more),
+    terminated with `critique_clean: False` (expected cap-hit termination — the
+    graph returned a result instead of hanging or looping past the cap) and a
+    6-citation answer spanning both `bert.pdf` and `attention_is_all_you_need.pdf`.
+- **Bug found + fixed during final whole-branch review:** none for this phase (Phase
+  4's asymmetric-bullet-stripping fix was the prior phase's finding). This phase's
+  final review found only cosmetic Minor notes (path_map key-naming asymmetry,
+  file now holding several small pieces) — no fixes required.
+- **Files:** `src/graph.py`, `tests/test_graph.py` (both new).
+- **Deviation:** none.

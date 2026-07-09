@@ -279,3 +279,62 @@ dependency installed, bug hit + resolved, test run. Factual and brief.
   file now holding several small pieces) — no fixes required.
 - **Files:** `src/graph.py`, `tests/test_graph.py` (both new).
 - **Deviation:** none.
+
+---
+
+### 11 — Phase 6: Streamlit UI (`app.py`)
+- **What:** Built a single-page Streamlit app calling `build_graph()` (Phase 5,
+  unchanged) directly — no API layer. Layout: title, a preset-question dropdown (one
+  example per mode, reusing the exact questions already live-verified in Phase 5)
+  plus a free-text input defaulting to the preset's value, a Run button. On success:
+  a colored mode badge (green/blue/gold for easy/medium/hard) as the visual headline,
+  the answer, a Citations list (document + page), and a collapsed
+  "How this answer was produced" expander with iteration count, critique verdict
+  (Mode 3 only), and the full trace. On failure: `st.error(...)` with the exception
+  message, not a raw traceback.
+- **Why:** Phase 6 per PLAN.md — the last piece needed to actually demo the project
+  end-to-end in a browser.
+- **Explicit user constraint:** no emoji or pictographic characters, and no em/en
+  dashes, in any user-visible string in `app.py` (regular hyphens only) — a
+  deliberate stylistic choice to avoid text that reads as AI-generated boilerplate.
+  Does not apply to Python comments or to pre-existing strings from other files
+  (e.g. `config.MODE_LABELS`'s middle-dot, or the `→`/`×` characters in node trace
+  strings from Phases 3-4 — neither is an emoji nor an em/en dash).
+- **Tests:** A syntax check plus an automated emoji/dash scan were run as part of
+  implementation. The task reviewer independently re-verified the emoji/dash
+  constraint character-by-character rather than trusting the self-reported scan, and
+  found the file contains **zero non-ASCII characters at all** — a stronger and more
+  conclusive result than a regex match. No Critical/Important findings.
+- **Live browser verification:** No browser-automation tool was available in-session
+  (no Playwright/Selenium, no local Chrome/Chromium). Installed Playwright plus
+  headless Chromium as a one-time verification tool (not added to `requirements.txt`
+  — it's a dev-time verification aid, not a runtime dependency of the app) and drove
+  the running app end-to-end:
+  - **Mode 1** ("What is a vector database?"): green "Mode 1 · No Retrieval" badge,
+    correct answer, no Citations section (correct — Mode 1 has none), 2-line trace
+    in the expander.
+  - **Mode 2** ("According to the BERT paper, what pretraining tasks does BERT
+    use?"): blue "Mode 2 · Single-Hop Retrieval" badge, correct MLM/NSP answer, one
+    citation into `bert.pdf` page 8, trace = `router → search → generate` only.
+  - **Mode 3** ("Compare how BERT and the Transformer paper..."): gold "Mode 3 ·
+    Multi-Hop + Self-Critique" badge, a multi-paragraph comparison answer, 5
+    citations spanning both `bert.pdf` and `attention_is_all_you_need.pdf`,
+    `Iterations: 3` (hit the cap — consistent with Phase 5's prior live result on the
+    same question), `Critique clean: False` (expected cap-hit outcome), and an
+    11-step trace rendered correctly in the expander.
+  - **Free-text entry** ("What is the capital of France?", not a preset): routed to
+    Mode 1, answered correctly about Paris — confirms free-text works identically to
+    the preset dropdown path.
+  - **Error path:** temporarily set `GROQ_API_KEY` to an invalid value, restarted the
+    app, clicked Run, and confirmed `st.error(...)` rendered a clean red error box
+    ("Something went wrong: Error code: 401 - Invalid API Key") rather than
+    Streamlit's default traceback page. Restored the real key, restarted, and
+    confirmed the app answers correctly again.
+  - Screenshots taken at each step confirmed all of the above visually, not just via
+    extracted page text.
+- **Files:** `app.py` (new, repo root).
+- **Deviation:** none in the shipped code. Process deviation: Playwright + headless
+  Chromium were installed mid-task to satisfy the "verify in a real browser"
+  requirement, since no such tool was pre-installed in this environment — a
+  one-time addition to the local dev environment, not to the project's own
+  dependencies.

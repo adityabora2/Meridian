@@ -168,14 +168,41 @@ Build the nodes that make **Mode 1 and Mode 2** work (spec's priority).
   terminated at exactly 3 passes on a genuinely hard question.
 - **Log:** BUILD_LOG entry 10.
 
-## Phase 6 — Streamlit UI (`app.py`)  ☐
-- Text input + **Run** button; calls the compiled graph directly (no API layer).
-- Output shows: the **answer**, **which mode fired** (visually prominent — the headline
-  of the demo), and **citations** (document + page). For Mode 3, show iteration count.
-- **Exit check:** `streamlit run app.py` launches; a question flows through and the mode
-  badge is unmistakable.
-- **Log:** BUILD_LOG entry.
-- **⏸ PAUSE for your review before Phase 7.**
+## Phase 6 — Streamlit UI (`app.py`)  ☑
+- Preset-question dropdown + free-text input + **Run** button; calls the compiled
+  graph directly (no API layer) via `build_graph()`.
+- Output shows: a colored, prominent **mode badge** (the headline of the demo), the
+  **answer**, and **citations** (document + page). A collapsed expander shows
+  iteration count, critique verdict, and the full trace.
+- **No emoji or em/en dashes in any user-visible string** — a deliberate stylistic
+  constraint from the user (avoiding text that reads as AI-generated boilerplate).
+  Verified two ways: mechanically (the file contains zero non-ASCII characters at
+  all) and visually (screenshots of all three modes plus the error path).
+- **Live browser verification — done, driven with Playwright + headless Chromium**
+  (no browser-automation tool was available in-session, installed as a one-time dev
+  tool, not added to `requirements.txt`):
+  - **Mode 1** ("What is a vector database?"): green "Mode 1 · No Retrieval" badge,
+    correct answer, no Citations section, expander shows a 2-line trace.
+  - **Mode 2** ("According to the BERT paper, what pretraining tasks does BERT
+    use?"): blue "Mode 2 · Single-Hop Retrieval" badge, correct MLM/NSP answer, one
+    citation into `bert.pdf` page 8, expander trace shows `router → search →
+    generate` only.
+  - **Mode 3** ("Compare how BERT and the Transformer paper..."): gold "Mode 3 ·
+    Multi-Hop + Self-Critique" badge, multi-paragraph comparison answer, 5 citations
+    spanning both PDFs, `Iterations: 3` (hit the cap, matching Phase 5's prior live
+    result), `Critique clean: False` (expected cap-hit termination), full 11-step
+    trace rendered correctly.
+  - **Free-text entry** ("What is the capital of France?", not a preset): correctly
+    routed to Mode 1 and answered about Paris — confirms the free-text path works
+    identically to the preset path.
+  - **Error path:** temporarily invalidated `GROQ_API_KEY`, restarted the app,
+    confirmed `st.error(...)` shows a clean message ("Something went wrong: Error
+    code: 401 - Invalid API Key") instead of a raw Streamlit traceback. Restored the
+    real key and confirmed the app works normally again.
+- **Exit check:** met — `streamlit run app.py` launches, all three modes plus
+  free-text plus the error path were exercised live in a real browser and confirmed
+  correct by direct observation (screenshots), not just code reading.
+- **Log:** BUILD_LOG entry 11.
 
 ## Phase 7 — Test set + README  ☐
 - `tests/test_questions.py` — runnable **30-question set (10 easy / 10 medium / 10 hard)**;

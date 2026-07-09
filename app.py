@@ -42,7 +42,11 @@ question = st.text_input(
 )
 
 if st.button("Run"):
-    with st.spinner("Running the adaptive RAG pipeline..."):
+    spinner_text = (
+        "Running the adaptive RAG pipeline... "
+        "(this may take longer if the API is briefly rate-limited)"
+    )
+    with st.spinner(spinner_text):
         try:
             result = graph.invoke({"question": question, "trace": []})
         except Exception as exc:

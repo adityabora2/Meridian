@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+try:
+    from src.nodes.llm import chat
+    from src.state import RAGState
+except ImportError:
+    from nodes.llm import chat  # type: ignore
+    from state import RAGState  # type: ignore
+
+
+_SYSTEM = """You break down a hard, multi-hop question about AI research papers \
+(Adaptive-RAG, Self-RAG, Chain-of-Verification, and related work) into 2-3 focused \
+sub-questions that can each be answered by a SINGLE, independent document search.
+
+Rules:
+- Produce 2 or 3 sub-questions, never 1 and never more than 3.
+- Each sub-question must be self-contained and independently searchable.
+- Output ONLY the sub-questions, one per line.
+- No numbering, no bullets, no explanation, no preamble."""
+
+_MAX_SUB_QUESTIONS = 3
+
+
+def _parse_sub_questions(raw: str, *, fallback: str) -> list[str]:
+    lines = [line.strip() for line in raw.strip().splitlines()]
+    questions = [line for line in lines if line]
+    if not questions:
+        return [fallback]
+    return questions[:_MAX_SUB_QUESTIONS]
+
+
+def decompose(state: RAGState) -> RAGState:
+    question = state["question"]
+    raw = chat(_SYSTEM, question)
+    sub_questions = _parse_sub_questions(raw, fallback=question)
+
+    trace = list(state.get("trace", []))
+    trace.append(f"decompose → {len(sub_questions)} sub-question(s)")
+    return {"sub_questions": sub_questions, "trace": trace}
+
+
+if __name__ == "__main__":
+    import sys
+
+    q = sys.argv[1] if len(sys.argv) > 1 else (
+        "Compare how BERT and the Transformer paper each handle positional "
+        "information, and explain any tradeoffs."
+    )
+    result = decompose({"question": q, "trace": []})
+    print(f"Question: {q}\n")
+    for i, sq in enumerate(result["sub_questions"], start=1):
+        print(f"  {i}. {sq}")
+    print(f"\nTrace: {result['trace']}")

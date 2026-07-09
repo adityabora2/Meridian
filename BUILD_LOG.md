@@ -338,3 +338,71 @@ dependency installed, bug hit + resolved, test run. Factual and brief.
   requirement, since no such tool was pre-installed in this environment — a
   one-time addition to the local dev environment, not to the project's own
   dependencies.
+
+---
+
+### 12 — Corpus expansion to 10 papers, production-readiness audit, and Groq retry hardening
+- **What:** Three related pieces of work, done together:
+  1. **Corpus expanded from 2 to 10 papers.** Added GPT-3, RoBERTa, T5, ALBERT,
+     ELECTRA, DistilBERT, XLNet, PaLM (arXiv PDFs) alongside the existing Attention
+     Is All You Need and BERT. Re-ran `python -m src.ingest`: 1490 chunks indexed (up
+     from 132). Spot-checked retrieval across 3 of the new papers (T5, ELECTRA,
+     DistilBERT) — all returned correct, on-topic top hits.
+  2. **Full production-readiness audit**, prompted by the user calling the project
+     "so-called production ready." Read every source file and independently
+     verified BUILD_LOG's own prior claims rather than trusting them. Key findings:
+     - FAISS `IndexFlatIP` measured at 0.036ms mean search time at 1490 chunks —
+       not a real concern until roughly 1M+ chunks; explicitly not "fixed."
+     - Heading-detection heuristic (flagged as a known issue in entry 7) is worse
+       than previously described: **86% of all 1490 chunks** are mislabeled
+       "Abstract"/"References"/"Acknowledgments" — measured directly against
+       `index/metadata.json`, not estimated.
+     - Cross-paper retrieval contamination is a new, real risk at 10 papers:
+       `search.py` pools FAISS hits with zero document-level filtering, and the 10
+       papers are vocabulary-similar (BERT/RoBERTa/ALBERT/ELECTRA/DistilBERT), so a
+       question about one paper can now surface chunks from a sibling paper ranked
+       higher — feeding potentially off-topic evidence into Mode 3's critique loop.
+     - `router.py`/`decompose.py`'s few-shot prompt examples still reference
+       "Adaptive-RAG, Self-RAG, Chain-of-Verification" — papers not in the corpus at
+       all. Low-impact (routing is about question shape, not topic) but a real
+       prompt/corpus mismatch worth fixing.
+     - `llm.py`'s `chat()` had no retry/backoff/timeout configuration of its own
+       (though the Groq SDK does retry transient errors internally by default,
+       `max_retries=2`). Mode 3 can make up to 8 Groq calls per question, making it
+       the most rate-limit-exposed path — directly explaining the rate limit the
+       user hit earlier this session.
+     - BUILD_LOG entry 6 claims router/search/generate were "unit-tested, all
+       passed" — verified **no test files exist** for any of the three. Only
+       critique, decompose, and graph branch-function tests are actually committed
+       and repeatable. This entry corrects that record.
+  3. **Retry/timeout hardening**, the first of the audit's 5 prioritized fixes.
+     Widened the Groq client's retry budget (`max_retries=5`, up from the SDK
+     default of 2) and added an explicit `timeout=30.0`s in `src/nodes/llm.py`'s
+     `_client()`. Deliberately did **not** add custom retry/backoff logic on top —
+     the SDK's own mechanism, now with more room, is sufficient, and after it's
+     exhausted the failure should propagate loudly (per the user's explicit
+     decision) rather than be masked with a degraded/fake answer.
+- **Why:** The user's own real Groq rate limit, hit mid-session, was the direct
+  trigger. The audit was requested to get an honest read on "production ready"
+  before continuing to Phase 7 against the larger, more realistic corpus.
+- **Live verification of the fix:** Confirmed the constructed Groq client actually
+  carries the new `max_retries=5`/`timeout=30.0` values. Re-ran the Phase 6
+  error-path test (invalid API key) — still fails fast and cleanly (a 401 doesn't
+  retry, correctly). Then, while testing the happy path, **hit a genuine live daily
+  quota exhaustion** (`RateLimitError` 429: "tokens per day (TPD): Limit 100000,
+  Used 99846... try again in 13m51s") — this is exactly the "sustained failure,
+  fail loudly" case the design targeted, and it worked exactly as intended: a clear
+  exception with the exact reset time embedded, ready to surface via `app.py`'s
+  existing `st.error(...)` path. This confirms the fix is correct: retries cannot
+  and should not paper over an exhausted daily budget, only transient bursts.
+- **Not yet done (remaining audit items, explicitly deferred):** cross-paper
+  retrieval contamination / document-scoped search, heading-detection quality,
+  router/decompose prompt-corpus mismatch, a full live end-to-end pass of all 3
+  modes against the new 10-paper corpus, and Phase 7's 30-question test set (paused
+  pending the daily Groq quota reset).
+- **Files:** `src/nodes/llm.py`, `app.py` (both modified). `data/papers/*.pdf` (8
+  new, gitignored, not committed). `index/faiss.index`, `index/metadata.json`
+  (regenerated, gitignored, not committed).
+- **Deviation:** none from the approved retry-hardening spec. The corpus expansion
+  and audit were user-directed additions to this session's scope, not part of any
+  prior phase's plan.

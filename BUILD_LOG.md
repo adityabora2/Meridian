@@ -573,3 +573,71 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
 - **Files:** `src/nodes/llm.py`, `src/config.py`, `requirements.txt`,
   `.env.example` (all modified). No node file changed.
 - **Deviation:** none from the approved spec.
+
+---
+
+### 15 — Phase 7 + production hardening (test set, README, corpus fix, coverage gaps, generalization proof)
+- **What:** Cleared the full remaining action-item list to bring the system to a
+  genuinely production-ready, accurate state. Six pieces:
+  1. **Corpus data-accuracy fix.** The file named `gpt2.pdf` actually contained the
+     GPT-3 paper ("Language Models are Few-Shot Learners" — an arXiv-ID mixup from
+     the original download). Renamed it to `gpt3.pdf` and added the real GPT-2 paper
+     ("Language Models are Unsupervised Multitask Learners") as `gpt2.pdf`. Corpus is
+     now 11 correctly-labeled documents (1695 chunks). Also fixed `match_document`'s
+     tokenizer to de-hyphenate model names ("GPT-2" → adds a "gpt2" token) so
+     hyphenated names match their filename stem — previously gpt2/gpt3 tied on their
+     near-identical titles and fell back to `None` (a recall miss). Regression tests
+     added; BERT/T5 matches unaffected.
+  2. **Closed the router/generate unit-test gap.** Added `tests/test_router.py`
+     (label parsing, medium-fallback, iteration reset) and `tests/test_generate.py`
+     (evidence formatting, citation extraction, out-of-range-marker rejection,
+     no-evidence path) — both fully offline via monkeypatched `chat()`.
+     **Correction to entry 6:** that entry claimed router/search/generate were
+     "unit-tested, All PASSED," but until now no committed test file existed for
+     router or generate (only search, via `test_search.py`). Those Phase-3 "tests"
+     were one-off throwaway checks, never committed as regression tests. This entry
+     sets the record straight and closes the gap for real. Full offline suite is now
+     9 test files, all passing.
+  3. **Phase 7 — routing-accuracy harness** (`tests/test_questions.py`). 30 labelled
+     questions (10 easy / 10 medium / 10 hard) tuned to the actual 11-document
+     corpus, run through the live router with per-class + overall accuracy, plus a
+     `--mode3` flag measuring citation resolution on hard questions. **Live result on
+     qwen2.5:7b: 28/30 = 93.3%** (easy 10/10, hard 10/10, medium 8/10 — the two
+     medium misses classified as hard, which fails safe toward more retrieval).
+  4. **Generalization proof.** Ingested a genuinely non-academic PDF (the US
+     Constitution, 19 pages, 117 chunks) end-to-end. Font-size heading detection
+     correctly identified legal structure it was never designed for ("Article V",
+     "Amendment XII", "SECTION 3"); retrieval was accurate ("First Amendment" →
+     establishment-of-religion text; "senators per state" → "two Senators from each
+     State"). This closes the one open item from the general-document design spec's
+     testing section — proof the work isn't secretly still paper-specific. The test
+     surfaced (and fixed) a real robustness bug: the Constitution's embedded metadata
+     title was junk ("constitution_pdf2"), and the metadata-first strategy trusted
+     it; added `_looks_like_filename()` so junk/filename-shaped metadata is rejected
+     in favor of font-based extraction. All 11 papers still extract correct titles.
+  5. **README rewrite.** The prior README was stale (Groq, 512-token chunks,
+     "research papers", "currently building"). Rewritten as an accurate, complete
+     guide: Ollama-based setup with no API key, the general-document capability,
+     correct stack, offline-vs-live test split, project structure, the measured
+     93.3% routing accuracy, and an honest known-limitations section.
+  6. **Working-tree cleanup.** Committed the four implementation plans under
+     `docs/superpowers/plans/` (their specs were tracked, but the plans themselves
+     never had been), the user's `INTERVIEW_PREP.md` notes, and a trailing-newline
+     tidy on `direct_answer.py`.
+- **Why:** the user asked to complete every outstanding action item and drive the
+  system to "a ready and robust and accurate production-ready" state, using best
+  judgment without per-item check-ins.
+- **Known limitations, honestly stated (unchanged from entry 14, now documented in
+  the README too):** Qwen-7B's inconsistent `[n]` citation formatting on long Mode-3
+  generations (evidence retrieved correctly, markers sometimes unparseable) —
+  tracked as a metric via `test_questions.py --mode3`, fixable with a larger local
+  model. Cross-document scoping stays conservative (ambiguous queries search the
+  whole corpus rather than risk wrong-document scoping).
+- **Files:** `src/ingest.py` (de-hyphenation, junk-metadata title rejection);
+  `tests/test_router.py`, `tests/test_generate.py`, `tests/test_questions.py` (new);
+  `tests/test_ingest_match_document.py`, `tests/test_ingest_title.py` (new regression
+  tests); `README.md` (rewritten); `PLAN.md`, `BUILD_LOG.md` (this entry);
+  `docs/superpowers/plans/*` + `INTERVIEW_PREP.md` (committed); `data/documents/`
+  (gpt2/gpt3 corrected, gitignored). Index regenerated (gitignored).
+- **Deviation:** none — all work was within the stated goal of completing the
+  outstanding action items to production-ready quality.

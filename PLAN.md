@@ -223,18 +223,26 @@ full detail; design specs at
 - **Note for Phase 7 below:** its README task's "Groq key into `.env`" instruction
   is now stale — the setup step is `ollama pull qwen2.5:7b`, no API key needed.
 
-## Phase 7 — Test set + README  ☐
-- `tests/test_questions.py` — runnable **30-question set (10 easy / 10 medium / 10 hard)**;
-  prints each question, the routed mode, and pass/fail vs expected route so you can
-  validate routing accuracy.
-- `README.md` — setup: **`ollama pull qwen2.5:7b`** (no API key needed — see the
-  Addendum above), `pip install -r requirements.txt`, run ingestion, launch
-  Streamlit; note the FAISS persistence + no-AWS scope.
-- Final **BUILD_LOG** entry: honest Mode 3 status (stable / needs debugging / cut), per
-  the spec's "priority if time runs short" clause.
-- **Exit check:** test script runs and reports routing results; README reproduces setup
-  from scratch.
-- **⏸ FINAL review.**
+## Phase 7 — Test set + README  ☑
+- `tests/test_questions.py` — runnable **30-question set (10 easy / 10 medium / 10 hard)**
+  through the live router; reports per-class + overall routing accuracy, plus a
+  `--mode3` flag that runs the hard questions through the full graph and measures
+  citation resolution (surfacing the known Qwen-7B citation-format limitation as a
+  tracked metric). **Live result: 28/30 = 93.3%** (easy 10/10, hard 10/10, medium
+  8/10 — the 2 medium misses route to hard, which fails safe).
+- `README.md` — rewritten to reflect the actual current state: Ollama-based setup
+  (`ollama pull qwen2.5:7b`, no API key), general-document capability, correct stack
+  (256-token chunks, local Qwen), offline-vs-live test split, project structure, and
+  an honest known-limitations section.
+- Mode 3 status: **stable** — terminates correctly within the iteration cap; the one
+  known gap is Qwen-7B's inconsistent `[n]` citation formatting on long generations
+  (documented, tracked via `--mode3`, not a correctness/termination bug).
+- **Exit check:** met — `python -m tests.test_questions` runs and reports routing
+  results (93.3%); README reproduces setup from scratch.
+- See BUILD_LOG entry 15 for the full account of Phase 7 plus the additional
+  production-hardening done alongside it (GPT corpus-labeling fix, missing
+  router/generate unit tests, general-document generalization proof on a non-academic
+  PDF, and a corrected record of entry 6's test-coverage claim).
 
 ---
 

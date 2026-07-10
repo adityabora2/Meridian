@@ -92,6 +92,68 @@ def test_search_node_no_page_one_for_unscoped_query(monkeypatch):
     assert called["page_one"] is False  # never fetched when no document matched
 
 
+def test_cap_pool_respects_total_and_per_doc_caps():
+    from src.nodes.search import cap_pool
+    # 8 chunks from docA (scores 8.0..1.0), 3 from docB (0.9..0.7)
+    pool = [
+        {"chunk_id": f"a{i}", "document_name": "a.pdf", "score": float(8 - i)}
+        for i in range(8)
+    ] + [
+        {"chunk_id": f"b{i}", "document_name": "b.pdf", "score": 0.9 - i * 0.1}
+        for i in range(3)
+    ]
+    capped = cap_pool(pool)
+    a_count = sum(1 for c in capped if c["document_name"] == "a.pdf")
+    b_count = sum(1 for c in capped if c["document_name"] == "b.pdf")
+    assert a_count == 4  # PER_DOC_CAP quota holds even though a.pdf outscores b.pdf
+    assert b_count == 3  # every b chunk kept
+    assert len(capped) == 7
+
+
+def test_cap_pool_backfills_when_quota_leaves_room():
+    from src.nodes.search import cap_pool
+    from src import config
+    # One doc with 20 chunks: quota selects 4, backfill tops the pool to POOL_CAP.
+    pool = [
+        {"chunk_id": f"a{i}", "document_name": "a.pdf", "score": float(20 - i)}
+        for i in range(20)
+    ]
+    capped = cap_pool(pool)
+    assert len(capped) == config.POOL_CAP
+    # Highest-scored chunks win the backfill
+    assert capped[0]["chunk_id"] == "a0"
+
+
+def test_cap_pool_under_cap_unchanged():
+    from src.nodes.search import cap_pool
+    pool = [{"chunk_id": "x", "document_name": "a.pdf", "score": 1.0}]
+    assert cap_pool(pool) == pool
+
+
+def test_search_node_consumes_retry_queries(monkeypatch):
+    from src.nodes import search as search_mod
+    calls = []
+
+    def fake_search(q, k=None, document_hint=None):
+        calls.append(q)
+        return []
+
+    monkeypatch.setattr(search_mod, "faiss_search", fake_search)
+    monkeypatch.setattr(search_mod, "match_document", lambda q: None)
+    state = {
+        "question": "original question",
+        "sub_questions": ["sub q one", "sub q two"],
+        "retry_queries": ["retry query"],
+        "retrieved": [],
+        "iterations": 1,
+        "trace": [],
+    }
+    result = search_mod.search_node(state)
+    assert calls == ["retry query"]          # retry queries win over sub_questions
+    assert result["retry_queries"] == []      # consumed, cleared
+    assert result["iterations"] == 2          # still increments
+
+
 if __name__ == "__main__":
     test_merge_keeps_higher_scoring_duplicate()
     test_merge_sorts_by_score_descending()

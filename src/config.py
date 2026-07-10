@@ -27,6 +27,12 @@ CHUNK_OVERLAP_TOKENS = 50
 
 TOP_K = 6
 
+# Evidence-pool control: generate/verify consume at most POOL_CAP chunks, and
+# no single document may crowd out another's evidence (protects N-way
+# comparison questions from having one paper's chunks evicted entirely).
+POOL_CAP = 12
+PER_DOC_CAP = 4
+
 MAX_ITERATIONS = 3
 
 ROUTE_EASY = "easy"

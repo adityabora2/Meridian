@@ -23,9 +23,45 @@ def _merge(existing: list[dict], new: list[dict]) -> list[dict]:
     return sorted(by_id.values(), key=lambda c: c.get("score", 0.0), reverse=True)
 
 
+def cap_pool(pooled: list[dict]) -> list[dict]:
+    """Deterministically cap a score-sorted pool to POOL_CAP chunks with at
+    most PER_DOC_CAP per document (quota pass), backfilling from the skipped
+    chunks if the quota leaves room. generate and verify both call this on
+    state["retrieved"] so they see the identical evidence list: citation
+    indices in the answer must resolve against the same numbering."""
+    selected: list[dict] = []
+    skipped: list[dict] = []
+    per_doc: dict[str, int] = {}
+    for c in pooled:
+        doc = c["document_name"]
+        if per_doc.get(doc, 0) < config.PER_DOC_CAP and len(selected) < config.POOL_CAP:
+            selected.append(c)
+            per_doc[doc] = per_doc.get(doc, 0) + 1
+        else:
+            skipped.append(c)
+    if len(selected) < config.POOL_CAP and skipped:
+        # Backfill strategy: restore evidence from docs excluded by per-doc quota,
+        # but only if it doesn't crowd out multi-document diversity.
+        # Single-document pools always backfill; multi-document pools backfill only
+        # for documents completely excluded.
+        selected_docs = set(c["document_name"] for c in selected)
+        all_docs = set(c["document_name"] for c in pooled)
+        backfill = [s for s in skipped if s["document_name"] not in selected_docs]
+        if not backfill and len(all_docs) == 1:
+            # Single document; backfill from skipped
+            backfill = skipped
+        if backfill:
+            selected.extend(backfill[: config.POOL_CAP - len(selected)])
+            selected.sort(key=lambda c: c.get("score", 0.0), reverse=True)
+    return selected
+
+
 def search_node(state: RAGState) -> RAGState:
     sub_questions = state.get("sub_questions") or []
-    queries = sub_questions if sub_questions else [state["question"]]
+    retry_queries = state.get("retry_queries") or []
+    # Re-search retries (from verify's support failures) take priority; they
+    # never overwrite sub_questions, which the coverage check still needs.
+    queries = retry_queries or sub_questions or [state["question"]]
 
     fresh: list[dict] = []
     boosted_docs: set[str] = set()
@@ -72,4 +108,5 @@ def search_node(state: RAGState) -> RAGState:
         "retrieved": pooled,
         "iterations": state.get("iterations", 0) + 1,
         "trace": trace,
+        "retry_queries": [],
     }

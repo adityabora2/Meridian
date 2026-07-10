@@ -15,7 +15,7 @@ except ImportError:
 _SYSTEM = """You are a query-complexity router for a document Q&A system over an \
 indexed collection of documents.
 
-Classify the user's question into exactly one complexity level:
+Classify the user's question into exactly one category:
 
 - easy: General knowledge or definitional questions a strong LLM can answer correctly \
 WITHOUT looking at any document. No retrieval needed.
@@ -31,14 +31,19 @@ searches and evidence chained across sub-questions.
   Examples: "How does the approach in one document differ from another, and what do \
 they share?", "Compare how several sources each handle the same underlying problem."
 
-Respond with ONLY one word: easy, medium, or hard. No punctuation, no explanation."""
+- meta: A question about the document collection or the system ITSELF, not about the \
+content of any document. Answerable by listing what is indexed.
+  Examples: "What documents are loaded?", "What files can I ask about?", \
+"Which papers do you have?", "How many documents are indexed?"
+
+Respond with ONLY one word: easy, medium, hard, or meta. No punctuation, no explanation."""
 
 
 def _parse_label(raw: str) -> str | None:
     text = raw.strip().lower()
-    if text in (config.ROUTE_EASY, config.ROUTE_MEDIUM, config.ROUTE_HARD):
+    if text in (config.ROUTE_EASY, config.ROUTE_MEDIUM, config.ROUTE_HARD, config.ROUTE_META):
         return text
-    m = re.search(r"\b(easy|medium|hard)\b", text)
+    m = re.search(r"\b(easy|medium|hard|meta)\b", text)
     return m.group(1) if m else None
 
 

@@ -32,9 +32,11 @@ MAX_ITERATIONS = 3
 ROUTE_EASY = "easy"
 ROUTE_MEDIUM = "medium"
 ROUTE_HARD = "hard"
+ROUTE_META = "meta"
 
 MODE_LABELS = {
     ROUTE_EASY: "Mode 1 · No Retrieval",
     ROUTE_MEDIUM: "Mode 2 · Single-Hop Retrieval",
     ROUTE_HARD: "Mode 3 · Multi-Hop + Self-Critique",
+    ROUTE_META: "Corpus Info",
 }

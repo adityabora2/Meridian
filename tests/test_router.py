@@ -67,6 +67,18 @@ def test_route_question_resets_iterations_and_preserves_prior_trace(monkeypatch)
     assert result["trace"] == ["earlier step", "router → easy"]
 
 
+def test_parse_label_recognizes_meta():
+    assert _parse_label("meta") == "meta"
+    assert _parse_label("  META  ") == "meta"
+    assert _parse_label("This looks like a meta question.") == "meta"
+
+
+def test_parse_label_unparseable_still_none_not_meta():
+    # Regression: garbage must fall back via None (-> medium in route_question),
+    # never accidentally resolve to meta.
+    assert _parse_label("banana") is None
+
+
 if __name__ == "__main__":
     test_parse_label_exact_match()
     test_parse_label_strips_whitespace_and_case()

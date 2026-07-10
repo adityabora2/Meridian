@@ -80,22 +80,27 @@ Three cooperating changes:
 
 New pure function in `src/ingest.py`:
 
-- `implicated_documents(question) -> list[str]` — generalizes `match_document` to
-  return ALL confidently-matched indexed documents (same scoring/stopword/stem rules),
-  not just the best.
+- `implicated_documents(question) -> list[str]` — returns every indexed document
+  whose FILENAME-STEM tokens overlap the question's tokens (reusing `_tokenize`
+  including de-hyphenation, so "GPT-2" implicates gpt2.pdf). Stem-only, not title
+  tokens: title-word matching is too noisy for implication ("the original
+  Transformer" matches t5.pdf's title "…Text-to-Text Transformer" but not
+  attention_is_all_you_need — scoping to the wrong paper is worse than not scoping).
 
 Rule in `router.py`, applied after the LLM label (mirroring the existing easy→medium
 upgrade):
 
-- LLM says `hard` AND `len(implicated_documents(q)) <= 1` → **downgrade to `medium`**.
+- LLM says `hard` AND `len(implicated_documents(q)) == 1` → **downgrade to `medium`**.
 - ≥2 implicated documents → stays hard. 0 implicated documents → stays hard
-  (corpus-wide synthesis is genuine multi-hop).
+  (corpus-wide synthesis, or a document referenced by unmatchable paraphrase — a
+  safe, slower-not-wrong failure).
 - No medium→hard upgrade rule: under-escalation was not observed (YAGNI).
 
-Validated against the run: all 4 mis-escalated mediums (Transformer optimizer, PaLM
-count, RoBERTa masking*, T5 text-to-text) route medium or stay correctly placed; all
+Validated against the run: PaLM-count and T5-text-to-text (1 implicated doc each)
+route medium; RoBERTa-vs-BERT names 2 docs and stays hard (acceptable: comparative);
+Transformer-optimizer says "Transformer" (a paraphrase matching no stem) → implicates
+0 docs and stays hard — it is healed by the verification gate instead (§5–6); all
 genuinely-hard queries (≥2 named docs or 0 named docs) stay hard.
-(*RoBERTa-vs-BERT names 2 docs and stays hard — acceptable: it is comparative.)
 
 Trace line: `router → hard downgraded to medium (implicates only <doc>)`.
 
@@ -161,11 +166,13 @@ retry path:
 | clean | END |
 | budget exhausted | **Honest exit** (below) |
 
-**Budget:** total heal attempts (regenerations + re-searches combined) ≤
-`MAX_ITERATIONS = 3`. Because regenerations bypass `search_node`, the counter moves:
-`verify` increments `iterations` once per heal action it dispatches (and
-`search_node` no longer increments it); the router still resets it to 0 per run.
-One counter, one place, guaranteed termination exactly as today.
+**Budget:** `iterations` counts retrieval passes plus regenerations: `search_node`
+keeps incrementing it exactly as today (covers initial search and re-searches), and
+`verify` additionally increments it when dispatching a regeneration (which bypasses
+search). The router still resets it to 0 per run. Healing is allowed while
+`iterations < budget`, where budget is `MAX_ITERATIONS = 3` for hard (identical cap
+semantics to today) and `2` for medium (initial search + one regenerate). Every heal
+cycle increments the counter by at least one, guaranteeing termination.
 
 **Honest exit:** on exhaustion, if the latest failure is `support` or `coverage` with
 no new evidence found by the last re-search, the answer is replaced with an explicit
@@ -191,12 +198,14 @@ failure-type conditional + a `prepare_research` node that fills `retry_queries`.
 ## 8. Acceptance criteria
 
 1. **Q1** ends with an Adam / 4000-warmup / inverse-sqrt answer or an honest
-   "not found" — never a grounded non-answer marked clean. (With the routing guard it
-   should route medium and answer in ~10s.)
+   "not found" — never a grounded non-answer marked clean. (It stays routed hard —
+   "the original Transformer" matches no filename stem — so the verification gate,
+   not the routing guard, must heal it: responsiveness check → regenerate.)
 2. **Q9** emits no numeric value absent from its retrieved evidence.
-3. The 3 single-document mis-escalated medium queries (Transformer optimizer, PaLM
-   count, T5 text-to-text) route medium (~10s each, not 80–112s); RoBERTa-vs-BERT
-   stays hard by design (names 2 documents); all genuinely-hard queries stay hard.
+3. The 2 stem-matchable mis-escalated medium queries (PaLM count, T5 text-to-text)
+   route medium (~10s each, not 80–112s); RoBERTa-vs-BERT and Transformer-optimizer
+   stay hard by design (2 named docs / paraphrase); all genuinely-hard queries stay
+   hard.
 4. N-way comparison answers cover every named document (coverage check passes or the
    answer honestly states what is missing).
 5. Full 13-query suite re-run and validated against source PDF text; routing accuracy

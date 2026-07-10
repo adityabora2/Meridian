@@ -83,6 +83,52 @@ def test_parse_pdf_still_works_on_academic_style_headings(tmp_path):
     assert any("Results" in h or "3.2" in h for h in headings)
 
 
+def test_parse_pdf_detects_realistic_subtle_font_ratio_headings(tmp_path):
+    """Regression test for the calibration bug found against real papers
+    (bert.pdf, roberta.pdf, t5.pdf): real academic section headings are often
+    only ~10% larger than body text (e.g. 12.0pt heading vs 10.9pt body,
+    ratio ~1.10), not the dramatic 1.6-2.0x ratios used in the other synthetic
+    fixtures above. A threshold calibrated only against exaggerated ratios
+    will silently miss these real, subtle headings while still passing every
+    test that only uses large ratios.
+    """
+    pdf = _make_pdf(
+        tmp_path,
+        [
+            ("2 Related Work", 12.0, "Prior work has explored many approaches. " * 10, 10.9),
+            ("3 Experiments", 12.0, "We evaluate on several benchmark datasets. " * 10, 10.9),
+        ],
+    )
+    segments = parse_pdf(pdf)
+    headings = {heading for _, heading, _ in segments if heading}
+    assert any("Related Work" in h for h in headings)
+    assert any("Experiments" in h for h in headings)
+
+
+def test_parse_pdf_does_not_flag_near_body_size_variation_as_heading(tmp_path):
+    """Guards against overcorrecting the threshold: minor font-size variation
+    close to body size (e.g. 11.1pt vs 10.9pt body, ratio ~1.018 -- the kind
+    of noise seen from ligatures/bold/italic runs in real PDFs) must NOT be
+    classified as a heading, or ordinary body text would start polluting
+    section labels.
+    """
+    pdf = _make_pdf(
+        tmp_path,
+        [
+            (
+                "4 Conclusion",
+                12.0,
+                "This sentence has a slightly larger emphasized run of text. " * 10,
+                10.9,
+            ),
+        ],
+    )
+    segments = parse_pdf(pdf)
+    headings = {heading for _, heading, _ in segments if heading}
+    # The near-body-size emphasized text must not itself become a heading.
+    assert not any("emphasized run" in h for h in headings)
+
+
 if __name__ == "__main__":
     import tempfile
 
@@ -92,4 +138,6 @@ if __name__ == "__main__":
         test_extract_font_spans_returns_size_text_pairs(tmp_path)
         test_parse_pdf_detects_large_font_as_heading(tmp_path)
         test_parse_pdf_still_works_on_academic_style_headings(tmp_path)
+        test_parse_pdf_detects_realistic_subtle_font_ratio_headings(tmp_path)
+        test_parse_pdf_does_not_flag_near_body_size_variation_as_heading(tmp_path)
         print("=== all heading-detection tests PASSED ===")

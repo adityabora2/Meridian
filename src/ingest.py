@@ -69,7 +69,7 @@ def _detect_body_font_size(doc: "fitz.Document", sample_pages: int = 5) -> float
     return max(size_char_counts, key=lambda s: size_char_counts[s])
 
 
-_HEADING_SIZE_RATIO = 1.15
+_HEADING_SIZE_RATIO = 1.08
 
 
 def _iter_page_blocks_with_headings(

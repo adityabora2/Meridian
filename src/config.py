@@ -41,7 +41,11 @@ MEDIUM_ITERATION_CAP = 2
 # Coverage check: a decompose sub-question counts as addressed when some answer
 # sentence reaches this cosine similarity (MiniLM embeddings). Tuned against
 # the real corpus; too low misses shallow answers, too high forces needless
-# regeneration.
+# regeneration. Kept at 0.45 (not swept over {0.35..0.50}) after task-8 live
+# verification: across the 13-query suite it fired exactly once (Q11, mid-loop)
+# and correctly forced a fuller regeneration rather than looping a good answer;
+# no query's final failure_type was ever "coverage" (the over-trigger failure
+# mode), so no evidence justified moving it.
 COVERAGE_SIM_THRESHOLD = 0.45
 
 ROUTE_EASY = "easy"

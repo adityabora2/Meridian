@@ -12,24 +12,24 @@ except ImportError:
     from state import RAGState  # type: ignore
 
 
-_SYSTEM = """You are a query-complexity router for a document Q&A system about \
-AI research papers (Adaptive-RAG, Self-RAG, Chain-of-Verification, and related work).
+_SYSTEM = """You are a query-complexity router for a document Q&A system over an \
+indexed collection of documents.
 
 Classify the user's question into exactly one complexity level:
 
 - easy: General knowledge or definitional questions a strong LLM can answer correctly \
 WITHOUT looking at any document. No retrieval needed.
-  Examples: "What does RAG stand for?", "What is a vector database?"
+  Examples: "What does an acronym like RAG stand for?", "What is a vector database?"
 
-- medium: The answer requires grounding in the papers, but a SINGLE focused search will \
-surface it. One fact or concept, findable in one place.
-  Examples: "What iteration cap does the self-critique loop use?", \
-"Which dataset did Self-RAG evaluate on?"
+- medium: The answer requires grounding in the documents, but a SINGLE focused search \
+will surface it. One fact or concept, findable in one place.
+  Examples: "What does document X say about topic Y?", \
+"Which method does the source material describe for doing Z?"
 
-- hard: The question is multi-hop or cross-document. Answering it needs several searches \
-and evidence chained across sub-questions.
-  Examples: "How does Adaptive-RAG's routing differ from Self-RAG's reflection, and \
-what do they share?", "Compare the verification strategies across all three papers."
+- hard: The question is multi-hop or cross-document. Answering it needs several \
+searches and evidence chained across sub-questions.
+  Examples: "How does the approach in one document differ from another, and what do \
+they share?", "Compare how several sources each handle the same underlying problem."
 
 Respond with ONLY one word: easy, medium, or hard. No punctuation, no explanation."""
 

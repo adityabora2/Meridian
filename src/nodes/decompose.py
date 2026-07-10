@@ -10,9 +10,9 @@ except ImportError:
     from state import RAGState  # type: ignore
 
 
-_SYSTEM = """You break down a hard, multi-hop question about AI research papers \
-(Adaptive-RAG, Self-RAG, Chain-of-Verification, and related work) into 2-3 focused \
-sub-questions that can each be answered by a SINGLE, independent document search.
+_SYSTEM = """You break down a hard, multi-hop question about a collection of indexed \
+documents into 2-3 focused sub-questions that can each be answered by a SINGLE, \
+independent document search.
 
 Rules:
 - Produce 2 or 3 sub-questions, never 1 and never more than 3.

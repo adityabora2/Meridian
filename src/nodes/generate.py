@@ -39,7 +39,7 @@ def generate(state: RAGState) -> RAGState:
     if not retrieved:
         trace.append("generate → no evidence")
         return {
-            "answer": "I couldn't find relevant evidence in the indexed papers to answer this.",
+            "answer": "I couldn't find relevant evidence in the indexed documents to answer this.",
             "citations": [],
             "trace": trace,
         }

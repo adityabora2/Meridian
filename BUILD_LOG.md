@@ -406,3 +406,170 @@ dependency installed, bug hit + resolved, test run. Factual and brief.
 - **Deviation:** none from the approved retry-hardening spec. The corpus expansion
   and audit were user-directed additions to this session's scope, not part of any
   prior phase's plan.
+
+---
+
+### 13 — General document support (font-size heading detection, title extraction,
+cross-document retrieval scoping, domain-agnostic prompts, papers→documents rename)
+- **What:** A 6-task plan (`docs/superpowers/plans/2026-07-11-general-document-support.md`,
+  design spec `docs/superpowers/specs/2026-07-11-general-document-support-design.md`)
+  removing every academic-paper-specific assumption from the ingestion pipeline and
+  LLM prompts, prompted by the user's push-back that a system meant for general PDF
+  documents shouldn't be hardcoded to research-paper conventions:
+  - **Task 1 — font-size-based heading detection** (`src/ingest.py`). Replaced the
+    keyword-regex heuristic (only recognized academic section names, already
+    measured at 86% wrong) with detection based on visual prominence: a heading is
+    text whose font size is meaningfully larger than the document's detected
+    body-text size. Caught and fixed a real calibration bug during implementation —
+    the initial `_HEADING_SIZE_RATIO = 1.15` detected **zero** real section headings
+    on the actual BERT paper (real academic headings are only ~10% larger than body
+    text, not 15%+); recalibrated to `1.08` after sweeping against all 10 real
+    papers in the corpus, confirmed via reverting the fix and observing the new
+    regression tests genuinely fail.
+  - **Task 2 — per-document title extraction** (`src/ingest.py`). New
+    `document_title` field per chunk: PDF embedded metadata first, falling back to
+    the largest-font text on page 1, falling back to the filename stem. Caught two
+    more real-world bugs during required real-PDF verification: arXiv's rotated
+    sidebar watermark being picked as the title (fixed by filtering to horizontal
+    text only), and small-caps titles splitting one word across two font sizes
+    (fixed by grouping spans into lines with a size-tolerance threshold instead of
+    picking a single largest span). Both fixes independently verified by reverting
+    them and confirming new regression tests fail without them.
+  - **Task 3 — cross-document retrieval scoping** (`src/ingest.py`,
+    `src/nodes/search.py`). New `match_document(text) -> str | None`: token-overlap
+    scoring of a query against each document's title+filename, returning a
+    confident match or `None` (safe default = search everything). `search()` gained
+    an optional `document_hint` parameter to filter FAISS results to one document.
+    Found the plan's originally-specified unweighted scoring was mathematically
+    unsatisfiable (two of its own test fixtures required opposite outcomes from
+    identical scores); fixed with a stopword filter plus filename-stem match
+    weighting, keeping the plan's core scoring function untouched. Live-verified:
+    an unfiltered search for a BERT question previously returned **zero** bert.pdf
+    chunks in the top 5 (contaminated by roberta/electra/xlnet); with the fix
+    applied, 100% bert.pdf.
+  - **Task 4 — domain-agnostic prompts** (`src/nodes/router.py`,
+    `src/nodes/decompose.py`, `src/nodes/generate.py`). Removed all references to
+    "AI research papers (Adaptive-RAG, Self-RAG, Chain-of-Verification...)",
+    replaced with domain-neutral framing and shape-based example questions. Fixed
+    one stray "indexed papers" string in `generate.py`'s no-evidence fallback.
+    Routing behavior confirmed unchanged (same easy/medium/hard classification on
+    the standard 3 spot-check questions).
+  - **Task 5 — renamed `papers` to `documents` throughout** (`src/config.py`,
+    `src/ingest.py`, `.gitignore`, `data/papers/` → `data/documents/`).
+    `PAPERS_DIR` → `DOCS_DIR`. Confirmed zero stray references remain anywhere in
+    source. Also updated `.gitignore`'s PDF-ignore pattern to match the new path
+    (needed — otherwise the old pattern would stop matching and a future broad
+    `git add` could accidentally commit the corpus PDFs).
+- **Why:** the user explicitly challenged the project's scope: "why is this project
+  only handling and closing down on research papers... can't make this specific to
+  research papers." PyMuPDF's actual capabilities (font/layout extraction) were
+  never paper-specific — several hand-tuned heuristics and prompts were.
+- **Tests:** every task went through implementer → task-reviewer cycles (subagent-
+  driven development). Two tasks (1, 2) required a fix-and-re-review cycle after
+  the controller independently caught real bugs the implementer's own synthetic
+  tests missed — both times by checking behavior against the real 10-paper corpus
+  rather than trusting narrow test fixtures. All offline tests
+  (`tests/test_ingest_headings.py`, `tests/test_ingest_title.py`,
+  `tests/test_ingest_match_document.py`, `tests/test_search.py`, plus every
+  pre-existing test file) pass. `pytest` was installed as a dev-only tool (not
+  added to `requirements.txt`) for the monkeypatch-based match_document/search
+  tests, matching how Playwright was previously installed for browser verification.
+- **Live verification (Task 6), completed in two parts due to a Groq quota block
+  mid-task — see entry 14 for how it was ultimately completed:**
+  - **Heading-detection accuracy, measured directly against the real 10-paper
+    index:** generic/empty headings ("Abstract"/"References"/"Acknowledgments"/"")
+    dropped from **86%** (the original audit finding, entry 12) to **18.5%**
+    (289 of 1563 chunks) — a 4.6x reduction. The remaining top headings by
+    frequency are genuine section names: "References", numbered "1 Introduction",
+    "3 Results", specific appendix titles, etc. — not generic fallbacks.
+  - **Document-matching spot-check:** 3 real queries against 3 different real
+    papers (BERT, T5, ELECTRA) all correctly identified their target document.
+  - **Mode 1/2 live end-to-end:** both correct — Mode 2's citations landed 100% on
+    the correct document (`bert.pdf`), direct proof the contamination fix works on
+    the live system, not just in isolated tests.
+  - **Mode 3's full live run was blocked mid-task** by the Groq daily token quota
+    (99,605/100,000 used, reset ~72 min out) — completed afterward using the new
+    local LLM backend (Ollama/Qwen), see entry 14.
+- **Files:** `src/ingest.py`, `src/nodes/search.py`, `src/nodes/router.py`,
+  `src/nodes/decompose.py`, `src/nodes/generate.py`, `src/config.py`, `.gitignore`
+  (all modified); `tests/test_ingest_headings.py`, `tests/test_ingest_title.py`,
+  `tests/test_ingest_match_document.py`, `tests/test_search.py` (all new);
+  `data/documents/` (renamed from `data/papers/`, gitignored PDFs unchanged in
+  content, just relocated).
+- **Deviation:** three implementation-level deviations from the plan's literal
+  code, all disclosed, justified with real evidence, and independently verified by
+  task reviewers (font-size ratio recalibration, title-extraction line-grouping
+  instead of single-span, match_document's stopword+stem-weight scoring) — see
+  each task's description above. No deviation from the plan's design intent.
+
+---
+
+### 14 — Replace Groq with local Qwen 2.5 7B via Ollama
+- **What:** Per the user's explicit request ("I can't deal with the limit reset"),
+  removed the Groq dependency entirely from `src/nodes/llm.py`, replacing it with a
+  locally-served `qwen2.5:7b` model via Ollama (already installed on this machine).
+  Since every LLM-calling node (`router.py`, `direct_answer.py`, `generate.py`,
+  `decompose.py`, `critique.py`) already went through one shared `chat()` function,
+  this was scoped to a single file plus config/dependency bookkeeping — no node
+  file needed any change.
+  - `src/nodes/llm.py`: `_client()` now returns the `ollama` module (after a
+    reachability check via `ollama.list()`), rather than constructing a
+    Groq-API-keyed client. `chat()`'s exact signature is unchanged; internally
+    calls `ollama.chat(model=..., messages=..., options={"temperature":...,
+    "num_predict":...})`. Removed the Groq-specific `max_retries=5, timeout=30.0`
+    scaffolding — a local model has no rate limit to retry through, so a failure
+    means Ollama isn't running or the model isn't pulled, and retrying wouldn't
+    help either case. `LLMConfigError` now raises a clear message pointing at
+    `ollama serve` / `ollama pull qwen2.5:7b`.
+  - `src/config.py`: removed `GROQ_API_KEY`, `GROQ_MODEL`; added
+    `OLLAMA_MODEL = "qwen2.5:7b"`. No API key needed for local inference.
+  - `requirements.txt`: removed `groq`, added `ollama`.
+  - `.env.example`: removed the Groq-key instructions; replaced with a note about
+    `ollama serve`/`ollama pull qwen2.5:7b` one-time setup.
+- **Why:** Groq's free-tier daily token quota (100,000 tokens/day) was repeatedly
+  exhausted during this project's development and live verification — most
+  recently blocking Task 6 of the general-document-support plan (entry 13) for
+  ~72 minutes. The user wants this dependency and its recurring wait removed
+  entirely, not managed around with a fallback/toggle.
+- **Model choice:** `qwen2.5:7b` (~4.7GB, Q4 quantized) — comfortably fits this
+  machine's 18GB RAM alongside the embedding model and FAISS index, and this
+  project's four call types (single-word classification, short sub-question
+  generation, cited-answer generation, claim verification) don't need a larger
+  model's extra reasoning depth, especially at `temperature=0.0`.
+- **Live verification:**
+  - All pre-existing offline tests (`test_decompose.py`, `test_critique.py`,
+    `test_graph.py`, `test_ingest_headings.py`, `test_ingest_title.py`,
+    `test_ingest_match_document.py`, `test_search.py`) pass unchanged — none of
+    them call `chat()` directly, confirming the swap didn't disturb any parsing/
+    branching logic.
+  - Router: the same 3 standard spot-check questions classify identically to
+    every prior Groq-based verification in this project (easy/medium/hard).
+  - Full graph, all 3 modes, run against the live 10-paper corpus (this also
+    completes entry 13's Task 6, which was blocked on Groq's quota):
+    - **Mode 1:** correct, no retrieval.
+    - **Mode 2:** correct answer (BERT's MLM + NSP pretraining tasks), citations
+      100% from `bert.pdf` — reconfirms the cross-paper contamination fix (entry
+      13, Task 3) holds with the new LLM backend, not just with Groq.
+    - **Mode 3:** graph terminates correctly (`iterations: 2`, within the cap,
+      `critique_clean: True`), full decompose→search→generate→critique cycle
+      confirmed working mechanically.
+  - Error path: confirmed `chat()` raises a clear, catchable error when pointed at
+    a nonexistent model name (`ResponseError: model 'nonexistent-model-xyz' not
+    found`); the reachability-check path in `_client()` (Ollama daemon down) is
+    implemented and code-reviewed but not forcibly tested live, since doing so
+    would require stopping the user's persistent Ollama background service.
+- **Known limitation found and accepted, not fixed:** Qwen 7B is less reliable
+  than Groq's 70B model at following the `[n]` inline citation-marker format on
+  Mode 3's longer, more complex generations. Reproduced twice: the model produced
+  a well-formed, on-topic answer but used `(n1)`/`(n2)` style markers instead of
+  `[1]`/`[2]`, so zero citations resolved even though the underlying evidence
+  grounding was fine (confirmed separately: `generate()` in isolation with a
+  single simple piece of evidence correctly produces `[1]`-style output every
+  time — this is a complexity/reliability gap in the smaller model, not a bug in
+  `generate.py`'s prompt or parsing). Decision (with the user): accept as a known,
+  honest tradeoff of moving to a local 7B model rather than further prompt-
+  engineering around it; a larger local model (14B) is a future option if this
+  becomes a real problem in practice.
+- **Files:** `src/nodes/llm.py`, `src/config.py`, `requirements.txt`,
+  `.env.example` (all modified). No node file changed.
+- **Deviation:** none from the approved spec.

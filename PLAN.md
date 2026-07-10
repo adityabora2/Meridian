@@ -204,12 +204,32 @@ Build the nodes that make **Mode 1 and Mode 2** work (spec's priority).
   correct by direct observation (screenshots), not just code reading.
 - **Log:** BUILD_LOG entry 11.
 
+## Addendum — General document support + local LLM swap  ☑
+Two related pieces of unplanned work, done together (see BUILD_LOG entries 13-14 for
+full detail; design specs at
+`docs/superpowers/specs/2026-07-11-general-document-support-design.md` and
+`docs/superpowers/specs/2026-07-11-local-llm-qwen-swap-design.md`):
+- **General document support:** removed every academic-paper-specific assumption
+  (keyword-based heading detection, paper-specific prompts, `data/papers/` naming),
+  replacing with font-size-based heading detection, per-document title extraction,
+  cross-document retrieval scoping (fixes cross-paper contamination), and
+  domain-agnostic prompts. Heading-detection accuracy measured: 86% → 18.5%
+  generic/wrong headings.
+- **Local LLM swap:** replaced Groq entirely with a locally-served `qwen2.5:7b` via
+  Ollama, eliminating the recurring daily-quota blocker. All three modes
+  re-verified live against the new backend; one known quality tradeoff documented
+  (Qwen 7B less reliable than Groq's 70B at citation-marker formatting on Mode 3's
+  longer generations).
+- **Note for Phase 7 below:** its README task's "Groq key into `.env`" instruction
+  is now stale — the setup step is `ollama pull qwen2.5:7b`, no API key needed.
+
 ## Phase 7 — Test set + README  ☐
 - `tests/test_questions.py` — runnable **30-question set (10 easy / 10 medium / 10 hard)**;
   prints each question, the routed mode, and pass/fail vs expected route so you can
   validate routing accuracy.
-- `README.md` — setup: Groq key into `.env`, `pip install -r requirements.txt`, run
-  ingestion, launch Streamlit; note the FAISS persistence + no-AWS scope.
+- `README.md` — setup: **`ollama pull qwen2.5:7b`** (no API key needed — see the
+  Addendum above), `pip install -r requirements.txt`, run ingestion, launch
+  Streamlit; note the FAISS persistence + no-AWS scope.
 - Final **BUILD_LOG** entry: honest Mode 3 status (stable / needs debugging / cut), per
   the spec's "priority if time runs short" clause.
 - **Exit check:** test script runs and reports routing results; README reproduces setup

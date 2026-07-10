@@ -140,6 +140,54 @@ def test_route_question_keeps_easy_when_no_document_named(monkeypatch):
     assert result["route"] == "easy"
 
 
+# --- hard→medium deterministic downgrade guard ---
+
+
+def test_hard_downgraded_to_medium_when_one_doc_implicated(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "hard")
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    monkeypatch.setattr(
+        router_module, "implicated_documents", lambda q: ["palm.pdf"]
+    )
+    result = router_module.route_question({"question": "What is PaLM's parameter count and what scaling insight did it demonstrate?", "trace": []})
+    assert result["route"] == "medium"
+    assert any("downgraded to medium" in t for t in result["trace"])
+
+
+def test_hard_stays_hard_with_two_docs_implicated(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "hard")
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    monkeypatch.setattr(
+        router_module, "implicated_documents", lambda q: ["bert.pdf", "roberta.pdf"]
+    )
+    result = router_module.route_question({"question": "How does RoBERTa differ from BERT?", "trace": []})
+    assert result["route"] == "hard"
+
+
+def test_hard_stays_hard_with_zero_docs_implicated(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "hard")
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    monkeypatch.setattr(
+        router_module, "implicated_documents", lambda q: []
+    )
+    result = router_module.route_question({"question": "What themes recur across the corpus?", "trace": []})
+    assert result["route"] == "hard"
+
+
+def test_medium_not_upgraded_by_guard(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "medium")
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    monkeypatch.setattr(
+        router_module, "implicated_documents", lambda q: ["bert.pdf", "roberta.pdf"]
+    )
+    result = router_module.route_question({"question": "anything", "trace": []})
+    assert result["route"] == "medium"
+
+
 if __name__ == "__main__":
     test_parse_label_exact_match()
     test_parse_label_strips_whitespace_and_case()

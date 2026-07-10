@@ -7,13 +7,13 @@ try:
     from src.logging_config import get_logger
     from src.nodes.llm import chat
     from src.state import RAGState
-    from src.ingest import match_document
+    from src.ingest import match_document, implicated_documents
 except ImportError:
     import config  # type: ignore
     from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
-    from ingest import match_document  # type: ignore
+    from ingest import match_document, implicated_documents  # type: ignore
 
 log = get_logger("router")
 
@@ -95,6 +95,10 @@ def route_question(state: RAGState) -> RAGState:
             "route": config.ROUTE_META,
             "mode_label": config.MODE_LABELS[config.ROUTE_META],
             "iterations": 0,
+            "failure_type": "",
+            "verify_feedback": "",
+            "retry_queries": [],
+            "verification_warnings": [],
             "trace": trace,
         }
 
@@ -116,11 +120,32 @@ def route_question(state: RAGState) -> RAGState:
             log.info("Q=%r route=easy upgraded to medium (names %s)", question[:70], matched)
             trace.append(f"router → easy upgraded to medium (names {matched})")
 
+    # Deterministic downgrade guard: a question that names exactly ONE indexed
+    # document is single-hop by definition (one scoped search surfaces its
+    # evidence, even for two-part questions), so the hard path's latency and
+    # pool growth are pure cost. 0 implicated docs stays hard: corpus-wide
+    # synthesis, or a paraphrase we cannot scope (safe, slower-not-wrong).
+    if label == config.ROUTE_HARD:
+        implicated = implicated_documents(question)
+        if len(implicated) == 1:
+            label = config.ROUTE_MEDIUM
+            log.info(
+                "Q=%r route=hard downgraded to medium (implicates only %s)",
+                question[:70], implicated[0],
+            )
+            trace.append(
+                f"router → hard downgraded to medium (implicates only {implicated[0]})"
+            )
+
     log.info("Q=%r route=%s", question[:70], label)
 
     return {
         "route": label,
         "mode_label": config.MODE_LABELS[label],
         "iterations": 0,
+        "failure_type": "",
+        "verify_feedback": "",
+        "retry_queries": [],
+        "verification_warnings": [],
         "trace": trace,
     }

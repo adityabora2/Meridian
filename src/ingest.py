@@ -42,33 +42,63 @@ def _count_tokens(text: str) -> int:
     return len(_tokenizer().encode(text, add_special_tokens=False))
 
 
-_HEADING_NUMBERED = re.compile(r"^\s*(\d+(\.\d+)*)\s+[A-Z].{0,80}$")
-_HEADING_KEYWORDS = re.compile(
-    r"^\s*(abstract|introduction|related work|background|method(s|ology)?|"
-    r"approach|experiments?|results?|discussion|conclusions?|references|"
-    r"appendix|acknowledgm?ents?)\s*$",
-    re.IGNORECASE,
-)
+def _extract_font_spans(page: "fitz.Page") -> list[tuple[float, str]]:
+    """Returns (font_size, text) for every text span on the page, in reading order."""
+    raw = page.get_text("dict")
+    spans: list[tuple[float, str]] = []
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = (span.get("text") or "").strip()
+                if text:
+                    spans.append((span.get("size", 0.0), text))
+    return spans
 
 
-def _looks_like_heading(line: str) -> bool:
-    line = line.strip()
-    if not line or len(line) > 90:
-        return False
-    if _HEADING_KEYWORDS.match(line):
-        return True
-    if _HEADING_NUMBERED.match(line):
-        return True
-    return False
+def _detect_body_font_size(doc: "fitz.Document", sample_pages: int = 5) -> float:
+    """Estimates the document's body-text font size by finding the size that
+    covers the most total characters across a sample of pages."""
+    size_char_counts: dict[float, int] = {}
+    n_pages = min(sample_pages, len(doc))
+    for page_index in range(n_pages):
+        for size, text in _extract_font_spans(doc[page_index]):
+            rounded = round(size, 1)
+            size_char_counts[rounded] = size_char_counts.get(rounded, 0) + len(text)
+    if not size_char_counts:
+        return 10.0
+    return max(size_char_counts, key=lambda s: size_char_counts[s])
 
 
-def _iter_page_blocks(page: "fitz.Page"):
-    blocks = page.get_text("blocks")
-    blocks = sorted(blocks, key=lambda b: (round(b[1], 1), round(b[0], 1)))
-    for b in blocks:
-        text = (b[4] or "").strip()
-        if text:
-            yield text
+_HEADING_SIZE_RATIO = 1.15
+
+
+def _iter_page_blocks_with_headings(
+    page: "fitz.Page", body_size: float
+) -> list[tuple[bool, str]]:
+    """Returns (is_heading, text) for each block on the page, merging spans
+    within a block and classifying the block as a heading if its dominant font
+    size is meaningfully larger than the document's body-text size."""
+    raw = page.get_text("dict")
+    results: list[tuple[bool, str]] = []
+    for block in raw.get("blocks", []):
+        block_text_parts: list[str] = []
+        block_sizes: list[float] = []
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = (span.get("text") or "")
+                if text.strip():
+                    block_text_parts.append(text)
+                    block_sizes.append(span.get("size", 0.0))
+        block_text = "".join(block_text_parts).strip()
+        if not block_text:
+            continue
+        max_size = max(block_sizes) if block_sizes else 0.0
+        is_heading = (
+            max_size >= body_size * _HEADING_SIZE_RATIO
+            and len(block_text) < 120
+        )
+        results.append((is_heading, block_text))
+    return results
 
 
 def parse_pdf(pdf_path: Path) -> list[tuple[int, str, str]]:
@@ -76,17 +106,17 @@ def parse_pdf(pdf_path: Path) -> list[tuple[int, str, str]]:
     current_heading = ""
     doc = fitz.open(pdf_path)
     try:
+        body_size = _detect_body_font_size(doc)
         for page_index in range(len(doc)):
             page = doc[page_index]
             page_number = page_index + 1
             buffer: list[str] = []
-            for block_text in _iter_page_blocks(page):
-                first_line = block_text.splitlines()[0].strip()
-                if _looks_like_heading(first_line) and len(block_text) < 120:
+            for is_heading, block_text in _iter_page_blocks_with_headings(page, body_size):
+                if is_heading:
                     if buffer:
                         segments.append((page_number, current_heading, "\n".join(buffer)))
                         buffer = []
-                    current_heading = first_line
+                    current_heading = block_text
                 else:
                     buffer.append(block_text)
             if buffer:

@@ -452,6 +452,21 @@ def search(
     return results
 
 
+def page_one_chunks(document_name: str) -> list[dict]:
+    """Returns the given document's page-1 chunks (title/author/abstract block)
+    as scored result dicts. Used to boost metadata into the candidate set for
+    queries scoped to a specific document, where a raw author/title block ranks
+    too low semantically to surface on its own."""
+    _, metadata = load_index()
+    results: list[dict] = []
+    for chunk in metadata:
+        if chunk.document_name == document_name and chunk.page_number == 1:
+            row = asdict(chunk)
+            row["score"] = 0.0  # neutral; _merge keeps it, real hits still rank above
+            results.append(row)
+    return results
+
+
 def _write_synthetic_pdf(path: Path) -> None:
     doc = fitz.open()
     pages = [

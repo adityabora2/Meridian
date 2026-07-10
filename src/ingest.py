@@ -113,9 +113,27 @@ def _extract_horizontal_title_lines(page: "fitz.Page") -> list[tuple[float, str]
     return lines
 
 
+def _looks_like_filename(title: str, stem: str) -> bool:
+    """True if an embedded metadata title looks like a junk filename rather
+    than a real document title. Real titles are almost always multi-word with
+    spaces; junk metadata is often a mangled export filename (no spaces, e.g.
+    "constitution_pdf2" or the bare filename stem). Trusting such values over
+    font-based extraction produces a garbage title, so they're rejected."""
+    t = title.strip().lower()
+    if not t:
+        return True
+    if t == stem.lower():
+        return True
+    # No spaces and looks filename-shaped (underscores/hyphens joining tokens,
+    # or a trailing "pdf"/digit suffix) -> treat as a filename, not a title.
+    if " " not in t and (("_" in t) or ("-" in t) or t.endswith("pdf")):
+        return True
+    return False
+
+
 def _extract_title(doc: "fitz.Document", pdf_path: Path) -> str:
     metadata_title = (doc.metadata or {}).get("title", "").strip()
-    if metadata_title and metadata_title.lower() != pdf_path.stem.lower():
+    if metadata_title and not _looks_like_filename(metadata_title, pdf_path.stem):
         return metadata_title
 
     if len(doc) > 0:

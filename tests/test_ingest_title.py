@@ -5,7 +5,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import fitz
 
-from src.ingest import _extract_title, build_chunks
+from src.ingest import _extract_title, _looks_like_filename, build_chunks
+
+
+def test_looks_like_filename_flags_junk_metadata():
+    # Real multi-word titles are not filenames.
+    assert not _looks_like_filename("Attention Is All You Need", "attention")
+    # Bare stem, or filename-shaped junk, is.
+    assert _looks_like_filename("attention", "attention")
+    assert _looks_like_filename("constitution_pdf2", "constitution")
+    assert _looks_like_filename("my-report-final", "report")
+    assert _looks_like_filename("document_pdf", "document")
+    assert _looks_like_filename("", "anything")
+
+
+def test_extract_title_ignores_junk_filename_metadata_prefers_font(tmp_path):
+    # A PDF whose embedded metadata title is a mangled filename (not a real
+    # title) must fall back to the largest-font text on page 1, not trust the
+    # junk metadata. This is the real-world US-Constitution case.
+    doc = fitz.open()
+    page = doc.new_page()
+    # Short title so insert_text doesn't run off the page edge at large font.
+    page.insert_text((72, 90), "REAL TITLE", fontsize=36)
+    rect = fitz.Rect(72, 140, page.rect.width - 72, 400)
+    page.insert_textbox(rect, "Body text follows. " * 20, fontsize=10)
+    doc.set_metadata({"title": "somefile_pdf2"})
+    path = tmp_path / "somefile.pdf"
+    doc.save(str(path))
+    doc.close()
+
+    reopened = fitz.open(path)
+    try:
+        title = _extract_title(reopened, path)
+        assert "REAL TITLE" in title
+        assert "somefile" not in title.lower()
+    finally:
+        reopened.close()
 
 
 def test_extract_title_uses_metadata_when_present(tmp_path):
@@ -137,6 +172,8 @@ if __name__ == "__main__":
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        test_looks_like_filename_flags_junk_metadata()
+        test_extract_title_ignores_junk_filename_metadata_prefers_font(tmp_path)
         test_extract_title_uses_metadata_when_present(tmp_path)
         test_extract_title_falls_back_to_largest_font_when_metadata_empty(tmp_path)
         test_extract_title_falls_back_to_filename_stem_when_no_text(tmp_path)

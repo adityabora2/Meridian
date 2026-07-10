@@ -31,6 +31,13 @@ def _render_answer(result: dict) -> None:
 
     st.write(result.get("answer", ""))
 
+    warnings = result.get("verification_warnings", [])
+    if warnings:
+        st.warning(
+            "This answer did not pass all verification checks: "
+            + "; ".join(warnings)
+        )
+
     citations = result.get("citations", [])
     if citations:
         lines = [
@@ -43,7 +50,7 @@ def _render_answer(result: dict) -> None:
         st.write(f"Mode: {result.get('mode_label', route)}")
         if route == "hard":
             st.write(f"Iterations: {result.get('iterations', 0)}")
-            st.write(f"Critique clean: {result.get('critique_clean')}")
+            st.write(f"Verified clean: {result.get('critique_clean')}")
         trace = result.get("trace", [])
         if trace:
             st.write("Trace:")

@@ -343,10 +343,24 @@ _STOPWORDS = {
 }
 
 
+# Matches a run of letters/digits allowing internal hyphens (e.g. "gpt-2",
+# "text-to-text"), so hyphenated model names survive as a single unit that can
+# be normalized to match an unhyphenated filename stem like "gpt2".
+_HYPHEN_RUN_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)+")
+
+
 def _tokenize(text: str) -> set[str]:
-    return {
-        t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS
-    }
+    text = text.lower()
+    tokens = {t for t in _TOKEN_RE.findall(text) if t not in _STOPWORDS}
+    # Add de-hyphenated variants of hyphenated runs so "GPT-2" (which
+    # otherwise splits into {"gpt", "2"}) also yields "gpt2", matching a
+    # filename stem like "gpt2.pdf". This closes a recall gap where hyphenated
+    # model names never matched their own unhyphenated document.
+    for run in _HYPHEN_RUN_RE.findall(text):
+        joined = run.replace("-", "")
+        if joined not in _STOPWORDS:
+            tokens.add(joined)
+    return tokens
 
 
 def _score_document_match(query_tokens: set[str], doc_tokens: set[str]) -> int:

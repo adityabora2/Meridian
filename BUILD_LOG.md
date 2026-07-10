@@ -700,7 +700,7 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
 
 ---
 
-### 17 — Verification gate, evidence-pool control, routing guard: built (tasks 1-7) and verified live (task 8)
+### 17 - Verification gate, evidence-pool control, routing guard: built (tasks 1-7) and verified live (task 8)
 
 - **What was built (tasks 1-7, spec `docs/superpowers/specs/2026-07-10-verification-gate-design.md`,
   plan `docs/superpowers/plans/2026-07-10-verification-gate.md`).** A live 13-query run
@@ -720,13 +720,13 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
      tokens stem-match exactly one indexed document's filename. Two or zero implicated
      documents stay hard.
   2. **Evidence-pool control** (`src/config.py`, `search.py`): `POOL_CAP = 12`,
-     `PER_DOC_CAP = 4` — the pool feeding generate/verify is capped, filled in score
+     `PER_DOC_CAP = 4` - the pool feeding generate/verify is capped, filled in score
      order, with a per-document quota so one paper cannot crowd out another's evidence
      in N-way comparisons. Regeneration retries reuse the same capped pool; only
      re-search retries grow and re-cap it.
   3. **Verification gate** (`src/nodes/verify.py`, replacing the old critique node): a
      deterministic Stage 1 (citation-marker resolution, number-grounding against the
-     evidence text with unit/magnitude normalization, and — hard route only —
+     evidence text with unit/magnitude normalization, and, hard route only,
      sub-question coverage via MiniLM cosine similarity) that runs with zero LLM calls,
      followed by a Stage 2 binary LLM check (hard route only, only if Stage 1 passes):
      responsiveness ("does the answer address the question", the exact property the old
@@ -739,60 +739,60 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
      verified" note appended and populate `verification_warnings`, rendered in the UI as
      a caution caption instead of being presented as clean.
 
-- **Live verification (task 8) — measured, not assumed.** Ollama running with
+- **Live verification (task 8) - measured, not assumed.** Ollama running with
   `qwen2.5:7b`. Results below are what was actually observed, including the failures.
 
   1. **Offline suite: PASS.** `pytest tests/ --ignore=tests/test_questions.py -q` →
      **105 passed, 0 failed.**
   2. **Routing harness: PASS, no regression.** `python -m tests.test_questions` →
-     **28/30 = 93.3%** (easy 10/10, medium 9/10, hard 9/10) — identical overall accuracy
+     **28/30 = 93.3%** (easy 10/10, medium 9/10, hard 9/10) - identical overall accuracy
      to the pre-task-1 baseline; the 2 misses (1 medium→hard, 1 hard→medium) fail in the
      directions already accepted as safe.
   3. **13-query live suite: PASS overall, 9.1 minutes total, zero errors, zero
      budget overruns.**
-     - **Q1 (Transformer optimizer/warmup) — PASS.** Route stayed **hard** the whole run
-       (`implicated_documents` found 0 stems — "the original Transformer" matches no
-       filename — matching the design's predicted path). 92.1s, 3 iterations. The
+     - **Q1 (Transformer optimizer/warmup) - PASS.** Route stayed **hard** the whole run
+       (`implicated_documents` found 0 stems - "the original Transformer" matches no
+       filename - matching the design's predicted path). 92.1s, 3 iterations. The
        answer correctly names **Adam, β1=0.9, β2=0.98, ε=10⁻⁹, warmup_steps=4000,
-       inverse-square-root schedule** — verified byte-for-byte against
+       inverse-square-root schedule** - verified byte-for-byte against
        `attention_is_all_you_need.pdf` page 7 ("We used the Adam optimizer... We used
        warmup_steps = 4000"). It also correctly carried the honest could-not-verify
        note (the LLM `support` check flagged it and the run exhausted its 3-iteration
-       budget) — both acceptance-criteria outcomes (correct content, honest labeling)
+       budget) - both acceptance-criteria outcomes (correct content, honest labeling)
        satisfied simultaneously.
-     - **Q3 (PaLM) and Q6 (T5) — PASS.** Q3: route=**medium**, **15.7s**. Q6:
+     - **Q3 (PaLM) and Q6 (T5) - PASS.** Q3: route=**medium**, **15.7s**. Q6:
        route=**medium**, **14.1s**. Both inside the 10-30s band (not 80-112s). PaLM's
        "540 billion parameters" and "discontinuous improvements" language verified
        against `palm.pdf` pages 1/3/4.
-     - **Q9 (ELECTRA) — PASS, the historic fabrication did not recur.** Route
+     - **Q9 (ELECTRA) - PASS, the historic fabrication did not recur.** Route
        downgraded to **medium** (single implicated doc), 24.8s, clean. The only number
        in the final answer is "15%", confirmed present in `electra.pdf` six times
        (mask ratio, standard MLM description). No "1/135" appeared. Note for the
        record: "1/135th" IS a real number in the ELECTRA paper's abstract, but for a
        *different* comparison (ELECTRA-Small vs. BERT-Large) than "1/4" (ELECTRA-Large
-       vs. RoBERTa/XLNet at equal compute class) — the original fabrication's defect
+       vs. RoBERTa/XLNet at equal compute class) - the original fabrication's defect
        was using the wrong ratio for the question asked, not inventing a number from
        nothing.
-     - **Q11/Q13 (3-way comparisons) — MIXED.** Q11 (BERT/XLNet/ELECTRA): **PASS** —
+     - **Q11/Q13 (3-way comparisons) - MIXED.** Q11 (BERT/XLNet/ELECTRA): **PASS**:
        all three documents cited (`bert.pdf`, `electra.pdf`, `xlnet.pdf`), all three
        pretraining objectives correctly described; one intermediate coverage-check
        trigger correctly forced a fuller regeneration before the run exhausted budget
        on an (unrelated, false-positive) `support` flag. Q13 (ALBERT/DistilBERT/
        Transformer): **verification gate correctly did not let it pass as clean**, but
        the underlying answer has two real defects the gate does NOT fully catch: (a)
-       it fabricated "DistilBERT has approximately 66 million parameters" — no such
+       it fabricated "DistilBERT has approximately 66 million parameters" - no such
        figure exists in `distilbert.pdf` (the paper only ever states "40% fewer
-       parameters" / "97% retained") — correctly caught by the number-grounding check
+       parameters" / "97% retained") - correctly caught by the number-grounding check
        as `failure_type: fabrication`, but two regeneration attempts both re-fabricated
        the same number before the run honestly exited with a visible warning; (b) the
        third paragraph, about "the original Transformer", is cited `[5]`, which
        resolves to **t5.pdf, not attention_is_all_you_need.pdf** (confirmed:
        "parameter sharing" / "shared parameters" appear nowhere in the real Transformer
-       paper) — a qualitative fabrication with no numeric value, so the number-grounding
+       paper) - a qualitative fabrication with no numeric value, so the number-grounding
        check cannot catch it; this is exactly the residual risk the design doc names in
        its own §9 ("does not catch fabricated entity names, only values"). Net: the
-       system never presented Q13 as clean — `verification_warnings` was populated and
-       the UI shows the caution caption — but the specific defect it flags (one bad
+       system never presented Q13 as clean - `verification_warnings` was populated and
+       the UI shows the caution caption - but the specific defect it flags (one bad
        number) is not the only defect present.
      - **No errors, no infinite loops.** All 13 queries terminated; hard-route
        iteration counts never exceeded `MAX_ITERATIONS = 3`, medium never exceeded
@@ -802,12 +802,12 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
      above (Q13 wasn't in the required list but was checked anyway since it surfaced
      the fabrication). Q10 (GPT-2→GPT-3) is a partial finding: the final answer never
      actually stated the scale change (1.5B/1542M → 175B, "10x more than any previous
-     non-sparse model" — both figures confirmed present in the retrieved
+     non-sparse model" - both figures confirmed present in the retrieved
      `gpt2.pdf`/`gpt3.pdf` evidence) despite the evidence being in the pool; the
      `responsiveness` check correctly caught this as non-responsive and the run
-     honestly exited with a warning rather than presenting a non-answer as clean —
-     the gate did its job even though the underlying generation was weak.
-  5. **Threshold tuning (step 5): not changed, decision recorded.** Swept nothing —
+     honestly exited with a warning rather than presenting a non-answer as clean.
+     The gate did its job even though the underlying generation was weak.
+  5. **Threshold tuning (step 5): not changed, decision recorded.** Swept nothing;
      the live run gave a clear enough signal without a sweep. `COVERAGE_SIM_THRESHOLD`
      fired exactly once across all 13 queries (Q11, mid-loop), and that trigger
      correctly forced a more complete regeneration rather than looping a good answer
@@ -817,19 +817,19 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
      empirical check.
 
 - **Residual risk surfaced, not in original scope to fix:** the Stage 2 LLM `support`
-  check produced apparent false positives on multiple hard queries (Q1, Q5, Q7, Q11) —
+  check produced apparent false positives on multiple hard queries (Q1, Q5, Q7, Q11):
   answers that read as correct and fully cited still got flagged `support` and rode the
   budget out to an honest-exit note. This matches the design doc's own named risk ("the
   binary responsiveness check still trusts the 7B... escape hatch: a larger local
-  verifier model") — the same caveat applies to the support check. Net effect is safe
+  verifier model") - the same caveat applies to the support check. Net effect is safe
   (over-cautious, not over-permissive: users see a caution caption on answers that were
   probably fine) but adds latency (full budget exhaustion instead of an early clean
   exit) and caption noise. Named here as a candidate for the qwen2.5:14b escape hatch if
   it keeps happening.
-- **Why:** task 8 of the verification-gate plan — the live acceptance-criteria check
+- **Why:** task 8 of the verification-gate plan - the live acceptance-criteria check
   that tasks 1-7 could not self-certify (unit tests don't exercise the real qwen2.5:7b).
-- **Files:** `BUILD_LOG.md`, `PROJECT_CHANGELOG.md` (this entry). No source changes —
+- **Files:** `BUILD_LOG.md`, `PROJECT_CHANGELOG.md` (this entry). No source changes;
   `COVERAGE_SIM_THRESHOLD` was evaluated and kept at its existing value with evidence
   now recorded in `src/config.py`'s comment.
-- **Deviation:** none — followed the task-8 brief's steps in order; no threshold change
+- **Deviation:** none - followed the task-8 brief's steps in order; no threshold change
   was needed because no coverage misfire was observed.

@@ -221,45 +221,45 @@ three distinct root causes:
 
 ---
 
-## 6b. Major architectural change #4 — Verification gate, evidence-pool control, routing guard
+## 6b. Major architectural change #4 - Verification gate, evidence-pool control, routing guard
 
 **Why.** A 13-query live run exposed three failure classes in the old single-critique
 loop (design spec `docs/superpowers/specs/2026-07-10-verification-gate-design.md`):
 
-- **F1 — self-healing didn't heal.** The old critique only checked "is every claim
-  supported by the evidence?" — never "does the answer address the question?" A
+- **F1 - self-healing didn't heal.** The old critique only checked "is every claim
+  supported by the evidence?" - never "does the answer address the question?" A
   question about the Transformer's optimizer got a grounded but off-topic answer about
   self-attention, marked `critique_clean: true`. Separately, ELECTRA's sample-efficiency
   question got a fabricated "1/135th of the compute" (paper says "1/4") that critique
   also passed, because nothing compared specific numbers in the answer against the
   evidence text.
-- **F2 — comprehensiveness wasn't checked.** Three-way comparison answers went deep on
+- **F2 - comprehensiveness wasn't checked.** Three-way comparison answers went deep on
   one document and shallow on the rest; nothing tied the final answer back to the
   decomposed sub-questions.
-- **F3 — over-escalation.** The router's `hard` definition ("multi-hop or
+- **F3 - over-escalation.** The router's `hard` definition ("multi-hop or
   cross-document") pattern-matched a two-part question about ONE document ("optimizer
   AND its warmup schedule") to hard, costing ~10x latency and, in one case, diluting the
   evidence pool enough to hurt the answer.
 
 **What changed** (three cooperating pieces, replacing the single critique node):
 
-1. **Deterministic routing guard** — `implicated_documents()` (`src/ingest.py`) returns
+1. **Deterministic routing guard** - `implicated_documents()` (`src/ingest.py`) returns
    every indexed document whose filename-stem tokens overlap the question. `router.py`
    downgrades an LLM `hard` label to `medium` when exactly one document is implicated;
    two or zero stay hard (zero is a safe, slower-not-wrong fallback for paraphrased
    references the stem-matcher can't catch).
-2. **Evidence-pool control** — `POOL_CAP = 12`, `PER_DOC_CAP = 4` (`src/config.py`,
+2. **Evidence-pool control** - `POOL_CAP = 12`, `PER_DOC_CAP = 4` (`src/config.py`,
    `search.py`). The pool feeding generate/verify is capped and per-document quota'd, so
    N-way comparisons can't have one paper's evidence crowd out another's. Regeneration
    retries reuse the same capped pool (no re-search); only re-search retries grow and
    re-cap it.
-3. **Verification gate** (`src/nodes/verify.py`) — a deterministic Stage 1 (citation
+3. **Verification gate** (`src/nodes/verify.py`) - a deterministic Stage 1 (citation
    resolution, number-grounding with unit/magnitude normalization, hard-route sub-
    question coverage via MiniLM cosine similarity), zero LLM calls, followed by a
    Stage 2 binary LLM check (hard route only, only if Stage 1 passes): responsiveness
    (the property the old critique never asked) and support (claims vs. evidence,
    absorbed unchanged from the old critique). Failure-type-aware healing replaces the
-   single retry path — `citations`/`fabrication`/`responsiveness`/`coverage` regenerate
+   single retry path - `citations`/`fabrication`/`responsiveness`/`coverage` regenerate
    against the same pool with explicit feedback; `support` re-searches on restated
    claims without overwriting the original sub-questions. On budget exhaustion, the
    answer gets an honest "could not be fully verified" note and populates
@@ -272,7 +272,7 @@ against source and correctly labeled when uncertain; the two mis-escalated mediu
 queries route medium in 14-16s (was 80-112s); the historic "1/135" ELECTRA fabrication
 did not recur. One residual gap found live: the number-grounding check catches
 fabricated *values* but not fabricated *entity/claim content with no number attached*
-(a Q13 answer mis-cited a claim about the original Transformer to t5.pdf) — named as a
+(a Q13 answer mis-cited a claim about the original Transformer to t5.pdf) - named as a
 residual risk in the design doc itself, confirmed live rather than newly discovered.
 
 ---
@@ -432,7 +432,7 @@ completeness, since they shaped the work.
 
 ## 9. Testing
 
-- **Offline unit-test suite** (no LLM/network needed — pure parsing/branching logic),
+- **Offline unit-test suite** (no LLM/network needed - pure parsing/branching logic),
   now covering the verification gate, pool capping, and routing guard alongside the
   original router/search/generate/ingest tests. **105 tests, all passing**
   (`pytest tests/ --ignore=tests/test_questions.py -q`).
@@ -441,7 +441,7 @@ completeness, since they shaped the work.
   hard questions through the full graph and measures citation resolution.
   - **Current routing accuracy: 28/30 = 93.3%** (easy 10/10, medium 9/10, hard 9/10;
     the exact split shifted a query between medium and hard misses run-to-run against
-    the same 93.3% total — both directions are the pre-accepted safe failure mode).
+    the same 93.3% total - both directions are the pre-accepted safe failure mode).
 
 ### Live verification of the verification gate (task 8, measured against the running system)
 
@@ -451,19 +451,20 @@ against source PDF text via PyMuPDF grep.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Offline suite | PASS — 105/105 |
-| 2 | Routing harness | PASS — 28/30 = 93.3%, no regression |
-| 3 | Q1 (Transformer optimizer) | PASS — stayed hard (0 implicated docs); answer correctly names Adam / β1=0.9 / β2=0.98 / warmup_steps=4000, verified against page 7; also correctly carried the honest could-not-verify note |
-| 4 | Q3 (PaLM) / Q6 (T5) route | PASS — medium in 15.7s / 14.1s (was 80-112s); 540B and text-to-text claims verified against source |
-| 5 | Q9 (ELECTRA fabrication) | PASS — downgraded to medium; only number in the final answer ("15%") confirmed in source 6x; "1/135" did not recur |
-| 6 | Q11 (BERT/XLNet/ELECTRA) | PASS — all 3 docs cited, all 3 objectives covered |
-| 7 | Q13 (ALBERT/DistilBERT/Transformer) | Gate correctly refused to mark it clean, but caught only one of two real defects: fabricated "66 million parameters" for DistilBERT (`failure_type: fabrication`, correctly flagged) alongside an uncaught mis-citation (a claim about the original Transformer cited to t5.pdf) — the number-grounding check does not catch fabricated claims that carry no number, a risk the design doc names explicitly |
-| 8 | No errors / no infinite loops | PASS — 13/13 completed, 9.1 min total, no query exceeded its iteration budget |
-| 9 | Coverage threshold tuning | Not needed — `COVERAGE_SIM_THRESHOLD` fired once across all 13 queries and correctly forced improvement rather than over-triggering; kept at 0.45 |
+| 1 | Offline suite | PASS - 105/105 |
+| 2 | Routing harness | PASS - 28/30 = 93.3%, no regression |
+| 3 | Q1 (Transformer optimizer) | PASS - stayed hard (0 implicated docs); answer correctly names Adam / β1=0.9 / β2=0.98 / warmup_steps=4000, verified against page 7; also correctly carried the honest could-not-verify note |
+| 4 | Q3 (PaLM) / Q6 (T5) route | PASS - medium in 15.7s / 14.1s (was 80-112s); 540B and text-to-text claims verified against source |
+| 5 | Q9 (ELECTRA fabrication) | PASS - downgraded to medium; only number in the final answer ("15%") confirmed in source 6x; "1/135" did not recur |
+| 6 | Q11 (BERT/XLNet/ELECTRA) | PASS - all 3 docs cited, all 3 objectives covered |
+| 7 | Q13 (ALBERT/DistilBERT/Transformer) | Gate correctly refused to mark it clean, but caught only one of two real defects: fabricated "66 million parameters" for DistilBERT (`failure_type: fabrication`, correctly flagged) alongside an uncaught mis-citation (a claim about the original Transformer cited to t5.pdf) - the number-grounding check does not catch fabricated claims that carry no number, a risk the design doc names explicitly |
+| 8 | Q10 (GPT-2 to GPT-3) | Responsiveness honest-exit, gate worked but generation was weak: the final answer never stated the actual scale change (1.5B/1542M to 175B, "10x more than any previous non-sparse model") even though both figures were confirmed present in the retrieved gpt2.pdf/gpt3.pdf evidence; the `responsiveness` check correctly caught the non-answer and the run exited honestly with a warning instead of presenting it as clean |
+| 9 | No errors / no infinite loops | PASS - 13/13 completed, 9.1 min total, no query exceeded its iteration budget |
+| 10 | Coverage threshold tuning | Not needed - `COVERAGE_SIM_THRESHOLD` fired once across all 13 queries and correctly forced improvement rather than over-triggering; kept at 0.45 |
 
 **Residual risk found live (not a task-8 blocker, named for follow-up):** the Stage 2
 `support` LLM check produced apparent false positives on several hard queries whose
-answers read as correct and fully cited (Q1, Q5, Q7, Q11) — they still rode the healing
+answers read as correct and fully cited (Q1, Q5, Q7, Q11) - they still rode the healing
 budget out to an honest-exit caution caption. Safe direction (over-cautious, not
 over-permissive) but adds latency and caption noise. Same category of risk the design
 doc already named for the responsiveness check ("the binary check still trusts the 7B");

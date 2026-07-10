@@ -11,7 +11,7 @@ venv/
 index/
 
 # PDFs are user-supplied corpus; ignore by default but keep the folder
-data/papers/*.pdf
+data/documents/*.pdf
 
 # OS
 .DS_Store

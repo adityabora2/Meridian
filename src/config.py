@@ -9,7 +9,7 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-PAPERS_DIR = DATA_DIR / "papers"
+DOCS_DIR = DATA_DIR / "documents"
 INDEX_DIR = PROJECT_ROOT / "index"
 FAISS_INDEX_PATH = INDEX_DIR / "faiss.index"
 METADATA_PATH = INDEX_DIR / "metadata.json"

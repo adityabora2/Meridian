@@ -261,14 +261,14 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     return np.asarray(vecs, dtype="float32")
 
 
-def build_index(papers_dir: Optional[Path] = None) -> int:
+def build_index(docs_dir: Optional[Path] = None) -> int:
     import faiss
 
-    papers_dir = papers_dir or config.PAPERS_DIR
-    pdfs = sorted(Path(papers_dir).glob("*.pdf"))
+    docs_dir = docs_dir or config.DOCS_DIR
+    pdfs = sorted(Path(docs_dir).glob("*.pdf"))
     if not pdfs:
         raise FileNotFoundError(
-            f"No PDFs found in {papers_dir}. Drop the papers there and re-run ingestion."
+            f"No PDFs found in {docs_dir}. Drop the documents there and re-run ingestion."
         )
 
     all_chunks: list[Chunk] = []
@@ -458,8 +458,8 @@ def self_test() -> None:
 
     print("=== ingest self-test ===")
     with tempfile.TemporaryDirectory() as tmp:
-        papers = Path(tmp) / "papers"
-        pdf = papers / "synthetic.pdf"
+        docs = Path(tmp) / "documents"
+        pdf = docs / "synthetic.pdf"
         _write_synthetic_pdf(pdf)
         print(f"Wrote synthetic PDF -> {pdf}")
 
@@ -486,7 +486,7 @@ def self_test() -> None:
         config.METADATA_PATH = config.INDEX_DIR / "metadata.json"
         load_index.cache_clear()
         try:
-            n = build_index(papers)
+            n = build_index(docs)
             assert n == len(chunks)
             assert config.FAISS_INDEX_PATH.exists() and config.METADATA_PATH.exists()
 
@@ -509,11 +509,11 @@ def self_test() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build the FAISS index from data/papers/.")
+    parser = argparse.ArgumentParser(description="Build the FAISS index from data/documents/.")
     parser.add_argument(
         "--self-test",
         action="store_true",
-        help="Run the synthetic-PDF pipeline test instead of indexing real papers.",
+        help="Run the synthetic-PDF pipeline test instead of indexing real documents.",
     )
     args = parser.parse_args()
     if args.self_test:

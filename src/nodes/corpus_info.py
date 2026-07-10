@@ -29,7 +29,7 @@ def corpus_info(state: RAGState) -> RAGState:
             seen[chunk.document_name] = chunk.document_title
 
     lines = [
-        f"- {name} — {title}" if title else f"- {name}"
+        f"- {name}: {title}" if title else f"- {name}"
         for name, title in seen.items()
     ]
     answer = (

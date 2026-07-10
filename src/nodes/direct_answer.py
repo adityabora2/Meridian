@@ -19,3 +19,4 @@ def direct_answer(state: RAGState) -> RAGState:
     trace = list(state.get("trace", []))
     trace.append("direct_answer (no retrieval)")
     return {"answer": answer, "citations": [], "trace": trace}
+

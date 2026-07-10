@@ -423,6 +423,25 @@ def match_document(text: str) -> Optional[str]:
     return None
 
 
+def implicated_documents(text: str) -> list[str]:
+    """Every indexed document whose FILENAME-STEM tokens overlap the text's
+    tokens. Stem-only (never title words): titles share vocabulary across this
+    corpus ("Transformer" is in t5's title), so title matching would implicate
+    the wrong document. A stem hit ("bert", "gpt2" via de-hyphenation) is the
+    unambiguous signal that the user named that document. Used by the router's
+    hard->medium downgrade guard."""
+    corpus = _document_match_corpus()
+    if not corpus:
+        return []
+    query_tokens = _tokenize(text)
+    implicated = []
+    for name in corpus:
+        stem_tokens = _tokenize(Path(name).stem.replace("_", " "))
+        if query_tokens & stem_tokens:
+            implicated.append(name)
+    return sorted(implicated)
+
+
 def search(
     query: str, k: Optional[int] = None, document_hint: Optional[str] = None
 ) -> list[dict]:

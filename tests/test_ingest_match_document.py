@@ -80,6 +80,57 @@ def test_match_document_returns_none_for_generic_cross_document_question(monkeyp
     assert result is None
 
 
+def test_implicated_documents_two_named_docs(monkeypatch):
+    from src import ingest
+    monkeypatch.setattr(
+        ingest, "_document_match_corpus",
+        lambda: {
+            "bert.pdf": "BERT: Pre-training of Deep Bidirectional Transformers bert",
+            "roberta.pdf": "RoBERTa: A Robustly Optimized BERT Pretraining Approach roberta",
+            "t5.pdf": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer t5",
+        },
+    )
+    got = ingest.implicated_documents(
+        "How does RoBERTa's pretraining differ from BERT's?"
+    )
+    assert got == ["bert.pdf", "roberta.pdf"]
+
+
+def test_implicated_documents_stem_only_ignores_title_words(monkeypatch):
+    from src import ingest
+    monkeypatch.setattr(
+        ingest, "_document_match_corpus",
+        lambda: {
+            "attention_is_all_you_need.pdf": "Attention Is All You Need attention_is_all_you_need",
+            "t5.pdf": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer t5",
+        },
+    )
+    # "Transformer" appears in t5's TITLE but matches no filename stem: nothing implicated.
+    got = ingest.implicated_documents(
+        "What optimizer does the original Transformer use?"
+    )
+    assert got == []
+
+
+def test_implicated_documents_dehyphenated_model_name(monkeypatch):
+    from src import ingest
+    monkeypatch.setattr(
+        ingest, "_document_match_corpus",
+        lambda: {
+            "gpt2.pdf": "Language Models are Unsupervised Multitask Learners gpt2",
+            "gpt3.pdf": "Language Models are Few-Shot Learners gpt3",
+        },
+    )
+    got = ingest.implicated_documents("Trace the evolution from GPT-2 to GPT-3")
+    assert got == ["gpt2.pdf", "gpt3.pdf"]
+
+
+def test_implicated_documents_empty_corpus(monkeypatch):
+    from src import ingest
+    monkeypatch.setattr(ingest, "_document_match_corpus", lambda: {})
+    assert ingest.implicated_documents("anything") == []
+
+
 if __name__ == "__main__":
     test_score_document_match_counts_token_overlap()
     test_tokenize_dehyphenates_model_names()

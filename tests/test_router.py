@@ -67,16 +67,58 @@ def test_route_question_resets_iterations_and_preserves_prior_trace(monkeypatch)
     assert result["trace"] == ["earlier step", "router → easy"]
 
 
-def test_parse_label_recognizes_meta():
-    assert _parse_label("meta") == "meta"
-    assert _parse_label("  META  ") == "meta"
-    assert _parse_label("This looks like a meta question.") == "meta"
+# --- meta detection is deterministic (is_meta_question), not an LLM label ---
 
 
-def test_parse_label_unparseable_still_none_not_meta():
-    # Regression: garbage must fall back via None (-> medium in route_question),
-    # never accidentally resolve to meta.
-    assert _parse_label("banana") is None
+def test_is_meta_question_detects_corpus_listing(monkeypatch):
+    import src.nodes.router as router_module
+    # No specific document is named in these, so match_document returns None.
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    from src.nodes.router import is_meta_question
+
+    assert is_meta_question("what documents are loaded?")
+    assert is_meta_question("which files can I ask about?")
+    assert is_meta_question("how many documents are indexed?")
+    assert is_meta_question("list all the papers")
+    assert is_meta_question("what documents are ingested?")
+    assert is_meta_question("explain the documents")
+
+
+def test_is_meta_question_rejects_content_questions(monkeypatch):
+    import src.nodes.router as router_module
+    # These name/imply a specific document OR aren't corpus-listing questions.
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+    from src.nodes.router import is_meta_question
+
+    assert not is_meta_question("Hi")
+    assert not is_meta_question("who are the authors in xlnet")
+    assert not is_meta_question("what all authors are there in xlnet")
+    assert not is_meta_question("what is machine learning")
+    assert not is_meta_question("explain bert")
+
+
+def test_is_meta_question_named_document_is_content_not_meta(monkeypatch):
+    import src.nodes.router as router_module
+    # "explain the bert document" pattern-matches a meta frame, but names a
+    # specific document -> it's a content question, not a corpus listing.
+    monkeypatch.setattr(router_module, "match_document", lambda q: "bert.pdf")
+    from src.nodes.router import is_meta_question
+
+    assert not is_meta_question("explain the bert document")
+
+
+def test_route_question_meta_short_circuits_before_llm(monkeypatch):
+    import src.nodes.router as router_module
+
+    def _boom(*a, **k):
+        raise AssertionError("LLM chat() must not be called for a meta question")
+
+    monkeypatch.setattr(router_module, "chat", _boom)
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+
+    result = router_module.route_question({"question": "what documents are loaded", "trace": []})
+    assert result["route"] == "meta"
+    assert result["trace"] == ["router → meta"]
 
 
 def test_route_question_upgrades_easy_to_medium_when_document_named(monkeypatch):
@@ -96,16 +138,6 @@ def test_route_question_keeps_easy_when_no_document_named(monkeypatch):
 
     result = router_module.route_question({"question": "what is machine learning", "trace": []})
     assert result["route"] == "easy"
-
-
-def test_route_question_does_not_upgrade_meta(monkeypatch):
-    import src.nodes.router as router_module
-    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "meta")
-    # Even if a document happens to match, a meta route stays meta.
-    monkeypatch.setattr(router_module, "match_document", lambda q: "bert.pdf")
-
-    result = router_module.route_question({"question": "what documents are loaded", "trace": []})
-    assert result["route"] == "meta"
 
 
 if __name__ == "__main__":

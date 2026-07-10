@@ -18,6 +18,10 @@ def test_route_from_router_hard_goes_to_decompose():
     assert route_from_router({"route": "hard"}) == "decompose"
 
 
+def test_route_from_router_meta_goes_to_corpus_info():
+    assert route_from_router({"route": "meta"}) == "corpus_info"
+
+
 def test_route_from_critique_clean_ends():
     state = {"critique_clean": True, "iterations": 1}
     assert route_from_critique(state) == "end"

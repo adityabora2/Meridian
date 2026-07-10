@@ -2,6 +2,7 @@ from __future__ import annotations
 
 try:
     from src import config
+    from src.nodes.corpus_info import corpus_info
     from src.nodes.critique import critique
     from src.nodes.decompose import decompose
     from src.nodes.direct_answer import direct_answer
@@ -11,6 +12,7 @@ try:
     from src.state import RAGState
 except ImportError:
     import config  # type: ignore
+    from nodes.corpus_info import corpus_info  # type: ignore
     from nodes.critique import critique  # type: ignore
     from nodes.decompose import decompose  # type: ignore
     from nodes.direct_answer import direct_answer  # type: ignore
@@ -26,6 +28,8 @@ def route_from_router(state: RAGState) -> str:
         return "direct_answer"
     if route == config.ROUTE_MEDIUM:
         return "search"
+    if route == config.ROUTE_META:
+        return "corpus_info"
     return "decompose"
 
 
@@ -53,14 +57,21 @@ def build_graph():
     graph.add_node("generate", generate)
     graph.add_node("critique", critique)
     graph.add_node("prepare_retry", prepare_retry)
+    graph.add_node("corpus_info", corpus_info)
 
     graph.add_edge(START, "router")
     graph.add_conditional_edges(
         "router",
         route_from_router,
-        {"direct_answer": "direct_answer", "search": "search", "decompose": "decompose"},
+        {
+            "direct_answer": "direct_answer",
+            "search": "search",
+            "decompose": "decompose",
+            "corpus_info": "corpus_info",
+        },
     )
     graph.add_edge("direct_answer", END)
+    graph.add_edge("corpus_info", END)
     graph.add_edge("decompose", "search")
     graph.add_edge("search", "generate")
     graph.add_conditional_edges(

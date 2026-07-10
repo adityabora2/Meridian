@@ -5,10 +5,12 @@ import re
 try:
     from src.logging_config import get_logger
     from src.nodes.llm import chat
+    from src.nodes.search import cap_pool
     from src.state import RAGState
 except ImportError:
     from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
+    from nodes.search import cap_pool  # type: ignore
     from state import RAGState  # type: ignore
 
 log = get_logger("generate")
@@ -37,7 +39,7 @@ def _cited_indices(answer: str, n: int) -> list[int]:
 
 
 def generate(state: RAGState) -> RAGState:
-    retrieved = state.get("retrieved", [])
+    retrieved = cap_pool(state.get("retrieved", []))
     trace = list(state.get("trace", []))
 
     if not retrieved:
@@ -50,7 +52,16 @@ def generate(state: RAGState) -> RAGState:
         }
 
     evidence = _format_evidence(retrieved)
-    user = f"Question: {state['question']}\n\nEvidence:\n{evidence}\n\nAnswer with inline [n] citations:"
+    user = f"Question: {state['question']}\n\nEvidence:\n{evidence}\n\n"
+    feedback = state.get("verify_feedback", "")
+    if feedback:
+        user += (
+            "PREVIOUS ATTEMPT FAILED VERIFICATION: "
+            f"{feedback}. Rewrite the answer correcting this. Answer the "
+            "question directly, use only the evidence, and cite with [n] "
+            "markers that match the evidence numbers.\n\n"
+        )
+    user += "Answer with inline [n] citations:"
     answer = chat(_SYSTEM, user, label="generate")
 
     cited = _cited_indices(answer, len(retrieved))

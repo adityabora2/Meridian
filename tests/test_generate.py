@@ -85,6 +85,62 @@ def test_generate_ignores_out_of_range_markers(monkeypatch):
     assert result["citations"] == []
 
 
+def test_generate_uses_capped_pool(monkeypatch):
+    from src.nodes import generate as gen_mod
+    from src import config
+    seen = {}
+    def fake_chat(system, user, **kw):
+        seen["user"] = user
+        return "Answer [1]."
+    monkeypatch.setattr(gen_mod, "chat", fake_chat)
+    retrieved = [
+        {"chunk_id": f"c{i}", "document_name": f"d{i % 6}.pdf", "page_number": 1,
+         "section_heading": "", "text": f"chunk text {i}", "score": float(100 - i)}
+        for i in range(30)
+    ]
+    result = gen_mod.generate({"question": "q?", "retrieved": retrieved, "trace": []})
+    # Only POOL_CAP chunks appear in the prompt
+    assert f"[{config.POOL_CAP}]" in seen["user"]
+    assert f"[{config.POOL_CAP + 1}]" not in seen["user"]
+
+
+def test_generate_appends_verify_feedback(monkeypatch):
+    from src.nodes import generate as gen_mod
+    seen = {}
+    def fake_chat(system, user, **kw):
+        seen["user"] = user
+        return "Corrected answer [1]."
+    monkeypatch.setattr(gen_mod, "chat", fake_chat)
+    state = {
+        "question": "q?",
+        "retrieved": [{"chunk_id": "c1", "document_name": "d.pdf", "page_number": 1,
+                       "section_heading": "", "text": "evidence", "score": 1.0}],
+        "failure_type": "fabrication",
+        "verify_feedback": "the answer contains values not present in the evidence: 1/135",
+        "trace": [],
+    }
+    gen_mod.generate(state)
+    assert "PREVIOUS ATTEMPT FAILED VERIFICATION" in seen["user"]
+    assert "1/135" in seen["user"]
+
+
+def test_generate_no_feedback_block_when_clean(monkeypatch):
+    from src.nodes import generate as gen_mod
+    seen = {}
+    def fake_chat(system, user, **kw):
+        seen["user"] = user
+        return "Answer [1]."
+    monkeypatch.setattr(gen_mod, "chat", fake_chat)
+    state = {
+        "question": "q?",
+        "retrieved": [{"chunk_id": "c1", "document_name": "d.pdf", "page_number": 1,
+                       "section_heading": "", "text": "evidence", "score": 1.0}],
+        "trace": [],
+    }
+    gen_mod.generate(state)
+    assert "PREVIOUS ATTEMPT" not in seen["user"]
+
+
 if __name__ == "__main__":
     test_format_evidence_numbers_and_labels_each_chunk()
     test_format_evidence_omits_missing_heading()

@@ -35,6 +35,15 @@ PER_DOC_CAP = 4
 
 MAX_ITERATIONS = 3
 
+# Medium answers get one regeneration retry: initial search (1) + one heal (2).
+MEDIUM_ITERATION_CAP = 2
+
+# Coverage check: a decompose sub-question counts as addressed when some answer
+# sentence reaches this cosine similarity (MiniLM embeddings). Tuned against
+# the real corpus; too low misses shallow answers, too high forces needless
+# regeneration.
+COVERAGE_SIM_THRESHOLD = 0.45
+
 ROUTE_EASY = "easy"
 ROUTE_MEDIUM = "medium"
 ROUTE_HARD = "hard"

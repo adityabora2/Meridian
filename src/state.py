@@ -19,5 +19,10 @@ class RAGState(TypedDict, total=False):
     critique_clean: bool
     unsupported_claims: list[str]
     iterations: int
+    failure_type: str
+    verify_feedback: str
+    heal_action: str
+    retry_queries: list[str]
+    verification_warnings: list[str]
 
     trace: list[str]

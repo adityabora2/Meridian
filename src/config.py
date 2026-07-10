@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,8 +13,7 @@ INDEX_DIR = PROJECT_ROOT / "index"
 FAISS_INDEX_PATH = INDEX_DIR / "faiss.index"
 METADATA_PATH = INDEX_DIR / "metadata.json"
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.3-70b-versatile"
+OLLAMA_MODEL = "qwen2.5:7b"
 LLM_TEMPERATURE = 0.0
 LLM_MAX_TOKENS = 1024
 

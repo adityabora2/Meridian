@@ -14,15 +14,17 @@ class LLMConfigError(RuntimeError):
 
 @lru_cache(maxsize=1)
 def _client():
-    from groq import Groq
+    import ollama
 
-    key = config.GROQ_API_KEY
-    if not key or key == "your_groq_api_key_here":
+    try:
+        ollama.list()
+    except Exception as exc:
         raise LLMConfigError(
-            "GROQ_API_KEY is not set. Copy .env.example to .env and add your key "
-            "(get one free at https://console.groq.com/keys)."
-        )
-    return Groq(api_key=key, max_retries=5, timeout=30.0)
+            "Cannot reach Ollama. Make sure it's running (`ollama serve`) and the "
+            f"model is pulled (`ollama pull {config.OLLAMA_MODEL}`). "
+            f"Original error: {exc}"
+        ) from exc
+    return ollama
 
 
 def chat(
@@ -33,13 +35,15 @@ def chat(
     max_tokens: int | None = None,
 ) -> str:
     client = _client()
-    resp = client.chat.completions.create(
-        model=config.GROQ_MODEL,
+    resp = client.chat(
+        model=config.OLLAMA_MODEL,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=config.LLM_TEMPERATURE if temperature is None else temperature,
-        max_tokens=config.LLM_MAX_TOKENS if max_tokens is None else max_tokens,
+        options={
+            "temperature": config.LLM_TEMPERATURE if temperature is None else temperature,
+            "num_predict": config.LLM_MAX_TOKENS if max_tokens is None else max_tokens,
+        },
     )
-    return (resp.choices[0].message.content or "").strip()
+    return (resp["message"]["content"] or "").strip()

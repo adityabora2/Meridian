@@ -641,3 +641,59 @@ cross-document retrieval scoping, domain-agnostic prompts, papers→documents re
   (gpt2/gpt3 corrected, gitignored). Index regenerated (gitignored).
 - **Deviation:** none — all work was within the stated goal of completing the
   outstanding action items to production-ready quality.
+
+---
+
+### 16 — Chatbot UI + three query-handling fixes
+- **What:** First reworked the Streamlit UI from a preset-dropdown + Run-button layout
+  into a proper chatbot (`st.chat_input`/`st.chat_message`, running history). The old
+  dropdown was a preset-question picker, but sitting where the mode badge appears it
+  repeatedly read as a mode *selector* and confused users into thinking they choose the
+  retrieval mode — they don't, the router does. The mode is now a small caption on each
+  answer ("Answered via single-hop retrieval") reporting the system's own decision. The
+  flow is now: ingest documents → open UI → type a query → the system routes, retrieves,
+  and answers on its own.
+  Then live chatbot testing surfaced three real query-handling gaps, each fixed via a
+  design-spec → plan → subagent-driven-development cycle (spec
+  `docs/superpowers/specs/2026-07-11-query-handling-fixes-design.md`, plan
+  `docs/superpowers/plans/2026-07-11-query-handling-fixes.md`):
+  - **Fix A — corpus meta-questions.** "what documents are ingested?" had no capability
+    and got routed to content retrieval (which correctly found nothing). Added a fourth
+    router category `meta` (Task 1) and a new `corpus_info` node (Task 2, wired in Task
+    3) that lists the indexed documents (name + title) directly from the index metadata,
+    no LLM call. "what documents are ingested?" now routes `meta` and lists all 11.
+  - **Fix B — first-page metadata retrieval.** "in xlnet who are the authors" returned
+    nothing useful even though the author names ARE indexed — a raw author list on page
+    1 ranks low semantically for "who are the authors". Added `page_one_chunks()` and,
+    in `search_node`, when a query is confidently scoped to a document (via
+    `match_document`), the document's page-1 chunks (title/authors/abstract) are boosted
+    into the candidate set (Task 5). Bounded: only fires on a confident document match,
+    so unscoped queries get no page-1 noise. The XLNet query now answers with the actual
+    authors (Zhilin Yang, Zihang Dai, ...), cited to xlnet.pdf page 1.
+  - **Fix C — document-aware routing.** "explain bert" answered from the model's own
+    knowledge (route `easy`, no retrieval) instead of the BERT document. Now, when the
+    router labels a question `easy` AND `match_document` finds it names an indexed
+    document, the route upgrades to `medium` (Task 4). Strictly gated on `easy` — a
+    `meta`/`medium`/`hard` label is never upgraded. "explain bert" now upgrades to
+    medium and answers from bert.pdf with citations; genuine general-knowledge
+    questions ("what is machine learning", which name no document) stay `easy`.
+- **Why:** live use of the new chatbot showed the queries "weren't working" — the four
+  reported cases were a UX confusion (mode dropdown) plus three distinct
+  retrieval/routing gaps, all now fixed.
+- **Tests:** every task went through implementer → task-reviewer cycles; all approved,
+  no Critical/Important findings. New/updated tests: `test_corpus_info.py` (new),
+  `test_router.py` (meta parsing + easy→medium upgrade + meta-not-upgraded),
+  `test_graph.py` (meta→corpus_info), `test_search.py` (page-1 boost gated on scope).
+  Full offline suite: **66 passing**.
+- **Live verification (Task 6):** all four originally-failing queries confirmed fixed
+  end-to-end through the full graph (documents-list via meta; XLNet authors named +
+  cited to page 1; "explain bert" grounded in bert.pdf; "what is machine learning"
+  correctly stays direct-answer). Routing-accuracy regression check held at **28/30 =
+  93.3%** (unchanged — easy 10/10, medium 8/10, hard 10/10), confirming the
+  document-aware upgrade did not over-trigger on genuine general-knowledge questions.
+- **Files:** `app.py` (chatbot rewrite); `src/config.py` (`ROUTE_META`);
+  `src/nodes/router.py` (meta category + easy→medium upgrade); `src/nodes/corpus_info.py`
+  (new); `src/graph.py` (meta route wiring); `src/ingest.py` (`page_one_chunks`);
+  `src/nodes/search.py` (page-1 boost); `tests/test_corpus_info.py` (new),
+  `tests/test_router.py`, `tests/test_graph.py`, `tests/test_search.py` (extended).
+- **Deviation:** none from the approved spec/plan.

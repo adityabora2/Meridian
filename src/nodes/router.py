@@ -6,10 +6,12 @@ try:
     from src import config
     from src.nodes.llm import chat
     from src.state import RAGState
+    from src.ingest import match_document
 except ImportError:
     import config  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
+    from ingest import match_document  # type: ignore
 
 
 _SYSTEM = """You are a query-complexity router for a document Q&A system over an \
@@ -57,6 +59,15 @@ def route_question(state: RAGState) -> RAGState:
 
     trace = list(state.get("trace", []))
     trace.append(f"router → {label}")
+
+    # Document-aware upgrade: a general-knowledge (easy) question that names an
+    # indexed document should be answered FROM that document, not model memory.
+    if label == config.ROUTE_EASY:
+        matched = match_document(question)
+        if matched:
+            label = config.ROUTE_MEDIUM
+            trace.append(f"router → easy upgraded to medium (names {matched})")
+
     return {
         "route": label,
         "mode_label": config.MODE_LABELS[label],

@@ -79,6 +79,35 @@ def test_parse_label_unparseable_still_none_not_meta():
     assert _parse_label("banana") is None
 
 
+def test_route_question_upgrades_easy_to_medium_when_document_named(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "easy")
+    monkeypatch.setattr(router_module, "match_document", lambda q: "bert.pdf")
+
+    result = router_module.route_question({"question": "explain bert", "trace": []})
+    assert result["route"] == "medium"
+    assert any("upgrad" in t for t in result["trace"])
+
+
+def test_route_question_keeps_easy_when_no_document_named(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "easy")
+    monkeypatch.setattr(router_module, "match_document", lambda q: None)
+
+    result = router_module.route_question({"question": "what is machine learning", "trace": []})
+    assert result["route"] == "easy"
+
+
+def test_route_question_does_not_upgrade_meta(monkeypatch):
+    import src.nodes.router as router_module
+    monkeypatch.setattr(router_module, "chat", lambda *a, **k: "meta")
+    # Even if a document happens to match, a meta route stays meta.
+    monkeypatch.setattr(router_module, "match_document", lambda q: "bert.pdf")
+
+    result = router_module.route_question({"question": "what documents are loaded", "trace": []})
+    assert result["route"] == "meta"
+
+
 if __name__ == "__main__":
     test_parse_label_exact_match()
     test_parse_label_strips_whitespace_and_case()

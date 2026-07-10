@@ -267,6 +267,113 @@ against the real corpus, not just fixtures.
 
 ---
 
+## 8b. Conceptual issues, questions raised, and decisions discussed
+
+Beyond the code bugs in §8, a number of issues were raised and discussed that were about
+*understanding, scope, or design* rather than a single broken line. Recording them for
+completeness, since they shaped the work.
+
+### Conceptual confusions raised (and clarified)
+
+- **"Why would the user select what mode to go with?" / "the queries aren't working"
+  (mode selection).** Raised twice. The dropdown was *not* a mode selector — it was a
+  preset-question picker — but placed where the mode badge appears it read as one. The
+  underlying truth: **the user never picks the mode; the router decides it automatically
+  before retrieval.** First addressed by explanation, then (when raised again with the
+  desired flow: ingest → open UI → type query → system does everything) fixed properly by
+  reworking the UI into a chatbot (§6). This is the same confusion that also surfaced as
+  the `meta` over-triggering bug (§8 #11) — the model, like the UI, was making a
+  selection the user didn't want it to.
+
+- **"I want the model to efficiently pick up and choose the retrieval strategy by
+  itself."** Clarified that the router *already* does this entirely on its own — the
+  concern was really about *how well* it does it, which is what motivated actually
+  measuring it (the Phase-7 30-question harness → 93.3%). The routing was real and working;
+  it just had never been quantified.
+
+- **"Why is this project only handling research papers... can't make this specific to
+  research papers."** A correct challenge to the project's scope. Led to the general-
+  document architectural change (§4). The honest finding: the architecture was never
+  paper-specific (PyMuPDF, chunking, FAISS, the graph are all document-agnostic) — only a
+  handful of *heuristics and prompts* were hand-tuned for papers. Those were generalized.
+
+- **"Shouldn't we have a database to make it more permanent and efficient?"** Discussed,
+  concluded **no change needed** for the current scope. The FAISS + JSON-sidecar setup is
+  already persistent (survives restarts, no re-embedding). A real vector DB would solve a
+  *scaling/concurrency* problem the project doesn't have yet (measured: FAISS flat search
+  is ~0.036 ms at ~1500 chunks; fine into the hundreds of thousands). It would matter only
+  if the project became multi-user, continuously-growing, or a shared service. Flagged as
+  a "revisit if scope changes" item, not acted on.
+
+- **"Where are the chunks stored after ingestion?"** Clarification, not a bug: chunks live
+  in two files under `index/` — `faiss.index` (the 384-dim vectors) and `metadata.json`
+  (the chunk text + metadata, aligned by position). Both gitignored, rebuilt by
+  `python -m src.ingest`.
+
+### Scope / sequencing decisions made during the chat
+
+- **Production-readiness audit.** The project was called "so-called production ready" with
+  skepticism, prompting a full critical audit (after expanding the corpus to 10 papers).
+  The audit produced a prioritized list of 5 gaps; they were then worked through:
+  1. LLM retry/rate-limit fragility → first widened Groq's retry budget, then (when the
+     quota was hit again) replaced Groq with local Ollama entirely (§5).
+  2. Cross-paper retrieval contamination → the `match_document` + `document_hint` scoping
+     (§4).
+  3. Heading-detection quality (measured at 86% wrong) → font-size detection (§4, and bug
+     §8 #1).
+  4. Router/decompose prompt-corpus mismatch → domain-agnostic prompts (§4).
+  5. A live end-to-end pass on the expanded corpus + the Phase-7 test set → done (§7, §9).
+  - The audit also **caught a documentation overclaim**: an earlier log said
+    router/search/generate were unit-tested when no such committed tests existed (fixed,
+    §7).
+
+- **Corpus scaled 2 → 10 → 11 papers.** Deliberately expanded to stress-test "production
+  readiness" against a larger, vocabulary-similar corpus (which is what *exposed* the
+  cross-paper contamination and the FAISS-scale question). Later became 11 when the GPT-2
+  paper was added to correct the mislabeling (§8 #6).
+
+- **The cross-paper contamination fix was designed, paused, then folded into the general-
+  document work.** Its original design assumed paper-shaped PDFs (title extraction), so
+  rather than build it twice, it was merged into the general-document generalization —
+  avoiding immediate rework.
+
+- **Groq → local model: full replacement, not a fallback.** Explicitly chose to remove
+  Groq entirely (no dual-path config toggle) rather than keep it as a fallback, because
+  the goal was to eliminate the rate-limit problem, not manage around it.
+
+- **Qwen 7B citation limitation: accept and document, don't over-engineer.** When Mode-3
+  citation formatting proved unreliable on the smaller model, the decision was to record
+  it honestly as a known tradeoff (with a metric to track it) rather than prompt-engineer
+  around a fundamental small-model limitation. A 14B model is the named escape hatch.
+
+### External constraints hit (not code issues, but they shaped the session)
+
+- **Groq daily token quota** was hit repeatedly (100k tokens/day). It blocked live
+  verification more than once and was the direct trigger for the Ollama migration.
+- **No browser-automation tool was pre-installed**, so Playwright + headless Chromium were
+  installed as one-time dev/verification tools (never added to `requirements.txt`) to
+  drive the Streamlit UI in a real browser. `pytest` was similarly installed dev-only for
+  the monkeypatch-based tests.
+- **Sandbox has no network access to huggingface.co**, producing harmless retry warnings
+  during embedding-model loads (the model loads from local cache regardless). Cosmetic
+  noise, not a failure.
+
+### Items raised but intentionally NOT changed (with rationale)
+
+- A stray trailing-newline change in `direct_answer.py` predating the session — committed
+  as a tidy, not reverted.
+- The `INTERVIEW_PREP.md` personal-notes file — committed as-is (user's own working
+  material), not rewritten despite being partly stale.
+- The `match_document` being called twice per medium query (once in the router for the
+  upgrade decision, once in search for scoping) — reviewed and confirmed **not** a
+  correctness issue (both read the lru-cached index, pure functions, no inconsistency
+  risk within a run); left as-is rather than adding coupling to thread it through state.
+- Unbounded retrieval-pool growth feeding the generate prompt — acknowledged as an
+  inherent, bounded consequence of the page-1 boost; acceptable for a local demo, flagged
+  as an optional future hardening only if the corpus scales.
+
+---
+
 ## 9. Testing
 
 - **10 offline unit-test files** (no LLM/network needed — pure parsing/branching logic):

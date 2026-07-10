@@ -83,6 +83,18 @@ def test_check_numbers_question_numbers_allowed():
     )
     assert ok  # "3" comes from the question, not fabrication
 
+def test_check_numbers_substring_of_larger_number_fails():
+    evid = "The model trained for 14000 steps."
+    ok, offending = _check_numbers("It trained for 400 steps [1].", evid, question="")
+    assert not ok
+    assert "400" in offending
+
+
+def test_check_numbers_sentence_final_period_still_matches():
+    evid = "We used warmup_steps = 4000."
+    ok, offending = _check_numbers("It uses 4000 warmup steps [1].", evid, question="")
+    assert ok
+
 
 # ---------- support parser (migrated from critique) ----------
 

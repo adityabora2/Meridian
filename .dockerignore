@@ -1,0 +1,12 @@
+.git
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+index/
+data/documents/*.pdf
+docs/
+.superpowers/
+INTERVIEW_PREP.md
+*.md

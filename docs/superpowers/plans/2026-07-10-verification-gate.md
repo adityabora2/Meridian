@@ -757,7 +757,14 @@ def _check_numbers(answer: str, evidence_text: str, question: str) -> tuple[bool
     offending = []
     for tok in _extract_numbers(body):
         canon = _canon_number(tok)
-        if canon in allowed or canon in evidence_canon:
+        if canon in allowed:
+            continue
+        # Boundary-anchored fallback: the canonical value must appear in the
+        # evidence as a whole number, not as a substring of a larger one
+        # ("400" must NOT pass because "14000" exists). Reject digit/decimal
+        # continuation on either side; a sentence-final period still matches.
+        pattern = r"(?<![\d.])" + re.escape(canon) + r"(?!\.?\d)"
+        if re.search(pattern, evidence_canon):
             continue
         offending.append(tok)
     return (not offending), offending

@@ -34,25 +34,16 @@ def cap_pool(pooled: list[dict]) -> list[dict]:
     per_doc: dict[str, int] = {}
     for c in pooled:
         doc = c["document_name"]
-        if per_doc.get(doc, 0) < config.PER_DOC_CAP and len(selected) < config.POOL_CAP:
+        if per_doc.get(doc, 0) < config.PER_DOC_CAP:
             selected.append(c)
             per_doc[doc] = per_doc.get(doc, 0) + 1
         else:
             skipped.append(c)
+        if len(selected) >= config.POOL_CAP:
+            break
     if len(selected) < config.POOL_CAP and skipped:
-        # Backfill strategy: restore evidence from docs excluded by per-doc quota,
-        # but only if it doesn't crowd out multi-document diversity.
-        # Single-document pools always backfill; multi-document pools backfill only
-        # for documents completely excluded.
-        selected_docs = set(c["document_name"] for c in selected)
-        all_docs = set(c["document_name"] for c in pooled)
-        backfill = [s for s in skipped if s["document_name"] not in selected_docs]
-        if not backfill and len(all_docs) == 1:
-            # Single document; backfill from skipped
-            backfill = skipped
-        if backfill:
-            selected.extend(backfill[: config.POOL_CAP - len(selected)])
-            selected.sort(key=lambda c: c.get("score", 0.0), reverse=True)
+        selected.extend(skipped[: config.POOL_CAP - len(selected)])
+        selected.sort(key=lambda c: c.get("score", 0.0), reverse=True)
     return selected
 
 

@@ -94,10 +94,13 @@ def test_search_node_no_page_one_for_unscoped_query(monkeypatch):
 
 def test_cap_pool_respects_total_and_per_doc_caps():
     from src.nodes.search import cap_pool
-    # 8 chunks from docA (scores 8.0..1.0), 3 from docB (0.9..0.7)
+    # 14 chunks from docA (scores 14.0..1.0), 3 from docB (0.9..0.7):
+    # the pool EXCEEDS POOL_CAP, so the quota+backfill actually bite. Plain
+    # top-12 by score would be 12 docA chunks and zero docB; the quota pass
+    # takes 4a+3b, backfill fills the rest with the best skipped a-chunks.
     pool = [
-        {"chunk_id": f"a{i}", "document_name": "a.pdf", "score": float(8 - i)}
-        for i in range(8)
+        {"chunk_id": f"a{i}", "document_name": "a.pdf", "score": float(14 - i)}
+        for i in range(14)
     ] + [
         {"chunk_id": f"b{i}", "document_name": "b.pdf", "score": 0.9 - i * 0.1}
         for i in range(3)
@@ -105,9 +108,9 @@ def test_cap_pool_respects_total_and_per_doc_caps():
     capped = cap_pool(pool)
     a_count = sum(1 for c in capped if c["document_name"] == "a.pdf")
     b_count = sum(1 for c in capped if c["document_name"] == "b.pdf")
-    assert a_count == 4  # PER_DOC_CAP quota holds even though a.pdf outscores b.pdf
-    assert b_count == 3  # every b chunk kept
-    assert len(capped) == 7
+    assert b_count == 3   # docB's evidence survives (the F2 protection)
+    assert a_count == 9   # 4 quota + 5 backfilled
+    assert len(capped) == 12  # POOL_CAP
 
 
 def test_cap_pool_backfills_when_quota_leaves_room():
@@ -128,6 +131,20 @@ def test_cap_pool_under_cap_unchanged():
     from src.nodes.search import cap_pool
     pool = [{"chunk_id": "x", "document_name": "a.pdf", "score": 1.0}]
     assert cap_pool(pool) == pool
+
+
+def test_cap_pool_backfill_is_not_document_filtered():
+    from src.nodes.search import cap_pool
+    # 6 docA + 2 docB + 2 docC chunks = 10 total, under POOL_CAP=12:
+    # every chunk must survive, including docA's chunks 5 and 6.
+    pool = (
+        [{"chunk_id": f"a{i}", "document_name": "a.pdf", "score": float(10 - i)} for i in range(6)]
+        + [{"chunk_id": f"b{i}", "document_name": "b.pdf", "score": 3.0 - i} for i in range(2)]
+        + [{"chunk_id": f"c{i}", "document_name": "c.pdf", "score": 1.0 - i * 0.1} for i in range(2)]
+    )
+    capped = cap_pool(pool)
+    assert len(capped) == 10
+    assert sum(1 for c in capped if c["document_name"] == "a.pdf") == 6
 
 
 def test_search_node_consumes_retry_queries(monkeypatch):

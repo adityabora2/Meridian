@@ -2,11 +2,11 @@ from __future__ import annotations
 
 try:
     from src import config
-    from src.ingest import search as faiss_search
+    from src.ingest import match_document, search as faiss_search
     from src.state import RAGState
 except ImportError:
     import config  # type: ignore
-    from ingest import search as faiss_search  # type: ignore
+    from ingest import match_document, search as faiss_search  # type: ignore
     from state import RAGState  # type: ignore
 
 
@@ -25,7 +25,8 @@ def search_node(state: RAGState) -> RAGState:
 
     fresh: list[dict] = []
     for q in queries:
-        fresh.extend(faiss_search(q, k=config.TOP_K))
+        document_hint = match_document(q)
+        fresh.extend(faiss_search(q, k=config.TOP_K, document_hint=document_hint))
 
     pooled = _merge(state.get("retrieved", []), fresh)
 

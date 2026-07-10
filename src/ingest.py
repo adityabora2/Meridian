@@ -313,19 +313,110 @@ def load_index():
     return index, metadata
 
 
-def search(query: str, k: Optional[int] = None) -> list[dict]:
+def _document_match_corpus() -> dict[str, str]:
+    """Maps document_name -> a matchable text blob (title + filename stem) for
+    every document currently in the loaded index."""
+    _, metadata = load_index()
+    corpus: dict[str, str] = {}
+    for chunk in metadata:
+        if chunk.document_name not in corpus:
+            stem = Path(chunk.document_name).stem
+            corpus[chunk.document_name] = f"{chunk.document_title} {stem}"
+    return corpus
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+# Common English words that appear incidentally in paper titles/filenames
+# (e.g. "Attention Is All You Need", "gpt2.pdf" vs. a query asking "what
+# is..."). Left in, these produce false ties/false positives between
+# unrelated documents; filtering them out sharpens matching on the
+# distinctive, document-specific vocabulary that actually identifies a paper.
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "of", "in", "on", "at", "to", "for", "with", "and", "or", "but", "not",
+    "no", "do", "does", "did", "how", "what", "which", "who", "whom",
+    "this", "that", "these", "those", "it", "its", "as", "by", "from",
+    "about", "into", "use", "uses", "used", "using", "can", "will",
+    "would", "should", "could", "i", "you", "he", "she", "we", "they",
+    "them", "their", "our", "your", "my",
+}
+
+
+def _tokenize(text: str) -> set[str]:
+    return {
+        t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS
+    }
+
+
+def _score_document_match(query_tokens: set[str], doc_tokens: set[str]) -> int:
+    return len(query_tokens & doc_tokens)
+
+
+# Extra weight given to query tokens that match a document's own filename
+# stem (e.g. "bert" in "bert.pdf"). Title-word overlap alone is too weak a
+# signal in a corpus of vocabulary-similar sibling papers -- e.g. ALBERT's
+# title ("A LITE BERT FOR...") literally contains the word "BERT", so a
+# BERT-focused query ties bert.pdf and albert.pdf on title words alone. The
+# filename stem is the most direct, unambiguous per-document label, so a
+# query naming it should count far more than an incidental shared title word.
+_STEM_MATCH_WEIGHT = 3
+
+_MATCH_MARGIN = 2
+
+
+def match_document(text: str) -> Optional[str]:
+    corpus = _document_match_corpus()
+    if not corpus:
+        return None
+
+    query_tokens = _tokenize(text)
+    scores: dict[str, int] = {}
+    for name, doc_text in corpus.items():
+        base = _score_document_match(query_tokens, _tokenize(doc_text))
+        stem_tokens = _tokenize(Path(name).stem.replace("_", " "))
+        stem_overlap = _score_document_match(query_tokens, stem_tokens)
+        scores[name] = base + _STEM_MATCH_WEIGHT * stem_overlap
+
+    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    if not ranked or ranked[0][1] == 0:
+        return None
+    if len(ranked) == 1:
+        return ranked[0][0]
+
+    best_name, best_score = ranked[0]
+    second_score = ranked[1][1]
+    if best_score - second_score >= _MATCH_MARGIN:
+        return best_name
+    return None
+
+
+def search(
+    query: str, k: Optional[int] = None, document_hint: Optional[str] = None
+) -> list[dict]:
     k = k or config.TOP_K
     index, metadata = load_index()
     q = embed_texts([query])
-    scores, ids = index.search(q, min(k, index.ntotal))
+
+    if document_hint is None:
+        fetch_k = min(k, index.ntotal)
+        scores, ids = index.search(q, fetch_k)
+    else:
+        fetch_k = min(max(k * 4, k), index.ntotal)
+        scores, ids = index.search(q, fetch_k)
+
     results: list[dict] = []
     for score, idx in zip(scores[0], ids[0]):
         if idx < 0:
             continue
         chunk = metadata[idx]
+        if document_hint is not None and chunk.document_name != document_hint:
+            continue
         row = asdict(chunk)
         row["score"] = float(score)
         results.append(row)
+        if len(results) >= k:
+            break
     return results
 
 

@@ -58,6 +58,64 @@ def test_extract_title_falls_back_to_filename_stem_when_no_text(tmp_path):
         reopened.close()
 
 
+def test_extract_title_ignores_rotated_sidebar_watermark(tmp_path):
+    """Regression test for the arXiv-style rotated sidebar watermark bug:
+    a large-font rotated text element (e.g. "arXiv:2101.00000v1 [cs.CL]"
+    stamped vertically along the page edge) must not be picked as the
+    title, even though its font size exceeds the real horizontal title's.
+    """
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "THE REAL PAPER TITLE", fontsize=18)
+    # Rotated watermark, larger font than the real title, positioned along
+    # the right edge of the page the way arXiv stamps its sidebar.
+    page.insert_text(
+        (page.rect.width - 20, page.rect.height - 100),
+        "arXiv:2101.00000v1 [cs.CL] 1 Jan 2021",
+        fontsize=24,
+        rotate=90,
+    )
+    rect = fitz.Rect(72, 120, page.rect.width - 72, 300)
+    page.insert_textbox(rect, "Body text follows. " * 20, fontsize=10)
+    path = tmp_path / "rotated_watermark.pdf"
+    doc.save(str(path))
+    doc.close()
+
+    reopened = fitz.open(path)
+    try:
+        title = _extract_title(reopened, path)
+        assert "THE REAL PAPER TITLE" in title
+        assert "arXiv" not in title
+    finally:
+        reopened.close()
+
+
+def test_extract_title_merges_split_font_size_spans_on_same_line(tmp_path):
+    """Regression test for the small-caps split-span bug: a title whose
+    first letter is typeset in a larger font than the rest of the word
+    (e.g. "ALBERT" as "A" at 17pt + "LBERT TEST TITLE" at 14pt, both on
+    the same horizontal line) must be returned in full, not truncated to
+    just the single largest span ("A").
+    """
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "A", fontsize=17)
+    page.insert_text((72 + 13, 72), "LBERT TEST TITLE", fontsize=14)
+    rect = fitz.Rect(72, 120, page.rect.width - 72, 300)
+    page.insert_textbox(rect, "Small body text follows. " * 20, fontsize=10)
+    path = tmp_path / "split_span_title.pdf"
+    doc.save(str(path))
+    doc.close()
+
+    reopened = fitz.open(path)
+    try:
+        title = _extract_title(reopened, path)
+        assert "ALBERT TEST TITLE" in title
+        assert title.strip() != "A"
+    finally:
+        reopened.close()
+
+
 def test_build_chunks_sets_same_title_on_every_chunk(tmp_path):
     doc = fitz.open()
     page = doc.new_page()
@@ -82,5 +140,7 @@ if __name__ == "__main__":
         test_extract_title_uses_metadata_when_present(tmp_path)
         test_extract_title_falls_back_to_largest_font_when_metadata_empty(tmp_path)
         test_extract_title_falls_back_to_filename_stem_when_no_text(tmp_path)
+        test_extract_title_ignores_rotated_sidebar_watermark(tmp_path)
+        test_extract_title_merges_split_font_size_spans_on_same_line(tmp_path)
         test_build_chunks_sets_same_title_on_every_chunk(tmp_path)
         print("=== all title-extraction tests PASSED ===")

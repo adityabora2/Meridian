@@ -6,74 +6,76 @@ from src.graph import build_graph
 
 st.set_page_config(page_title="Adaptive RAG", layout="centered")
 
-PRESET_QUESTIONS = {
-    "Mode 1 example - general knowledge": "What is a vector database?",
-    "Mode 2 example - single document lookup": (
-        "According to the BERT paper, what pretraining tasks does BERT use?"
-    ),
-    "Mode 3 example - multi-hop comparison": (
-        "Compare how BERT and the Transformer paper each handle positional "
-        "information, and explain any tradeoffs."
-    ),
-}
 
-MODE_DISPLAY = {
-    "easy": st.success,
-    "medium": st.info,
-    "hard": st.warning,
+@st.cache_resource
+def _graph():
+    return build_graph()
+
+
+MODE_CAPTION = {
+    "easy": "Answered directly (no retrieval needed)",
+    "medium": "Answered via single-hop retrieval",
+    "hard": "Answered via multi-hop retrieval with self-critique",
 }
 
 
-graph = build_graph()
+def _render_answer(result: dict) -> None:
+    """Render one assistant turn: a small mode caption, the answer, citations,
+    and a collapsible detail panel. The mode is chosen by the router on its own;
+    this only reports what it decided."""
+    route = result.get("route", "medium")
+    st.caption(MODE_CAPTION.get(route, "Answered"))
+
+    st.write(result.get("answer", ""))
+
+    citations = result.get("citations", [])
+    if citations:
+        lines = [
+            f"- {c.get('document_name')}, page {c.get('page_number')}"
+            for c in citations
+        ]
+        st.markdown("**Sources**\n" + "\n".join(lines))
+
+    with st.expander("How this answer was produced"):
+        st.write(f"Mode: {result.get('mode_label', route)}")
+        if route == "hard":
+            st.write(f"Iterations: {result.get('iterations', 0)}")
+            st.write(f"Critique clean: {result.get('critique_clean')}")
+        trace = result.get("trace", [])
+        if trace:
+            st.write("Trace:")
+            for i, step in enumerate(trace, start=1):
+                st.write(f"{i}. {step}")
+
 
 st.title("Adaptive RAG")
 st.caption(
-    "Ask a question. The router decides how much retrieval and verification "
-    "the question needs, then answers accordingly."
+    "Ask a question about your documents. The system decides on its own how "
+    "much retrieval and verification each question needs, then answers."
 )
 
-preset_label = st.selectbox(
-    "Try an example question, or type your own below",
-    options=list(PRESET_QUESTIONS.keys()),
-)
-question = st.text_input(
-    "Your question",
-    value=PRESET_QUESTIONS[preset_label],
-)
+if "history" not in st.session_state:
+    st.session_state.history = []  # list of {"question": str, "result": dict}
 
-if st.button("Run"):
-    spinner_text = (
-        "Running the adaptive RAG pipeline... "
-        "(this may take longer if the API is briefly rate-limited)"
-    )
-    with st.spinner(spinner_text):
-        try:
-            result = graph.invoke({"question": question, "trace": []})
-        except Exception as exc:
-            st.error(f"Something went wrong: {exc}")
-        else:
-            route = result.get("route", "medium")
-            mode_label = result.get("mode_label", "")
-            display_fn = MODE_DISPLAY.get(route, st.info)
-            display_fn(mode_label)
+# Replay the conversation so far.
+for turn in st.session_state.history:
+    with st.chat_message("user"):
+        st.write(turn["question"])
+    with st.chat_message("assistant"):
+        _render_answer(turn["result"])
 
-            st.write(result.get("answer", ""))
+question = st.chat_input("Ask a question")
+if question:
+    with st.chat_message("user"):
+        st.write(question)
 
-            citations = result.get("citations", [])
-            if citations:
-                st.subheader("Citations")
-                for c in citations:
-                    st.write(
-                        f"[{c.get('marker')}] {c.get('document_name')}, "
-                        f"page {c.get('page_number')}"
-                    )
-
-            with st.expander("How this answer was produced"):
-                if route == "hard":
-                    st.write(f"Iterations: {result.get('iterations', 0)}")
-                    st.write(f"Critique clean: {result.get('critique_clean')}")
-                trace = result.get("trace", [])
-                if trace:
-                    st.write("Trace:")
-                    for i, step in enumerate(trace, start=1):
-                        st.write(f"{i}. {step}")
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            try:
+                result = _graph().invoke({"question": question, "trace": []})
+            except Exception as exc:
+                st.error(f"Something went wrong: {exc}")
+                result = None
+        if result is not None:
+            _render_answer(result)
+            st.session_state.history.append({"question": question, "result": result})

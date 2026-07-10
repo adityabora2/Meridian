@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 
 try:
     from src import config
+    from src.logging_config import get_logger
 except ImportError:
     import config  # type: ignore
+    from logging_config import get_logger  # type: ignore
+
+log = get_logger("llm")
 
 
 class LLMConfigError(RuntimeError):
@@ -33,8 +38,10 @@ def chat(
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    label: str | None = None,
 ) -> str:
     client = _client()
+    start = time.monotonic()
     resp = client.chat(
         model=config.OLLAMA_MODEL,
         messages=[
@@ -46,4 +53,7 @@ def chat(
             "num_predict": config.LLM_MAX_TOKENS if max_tokens is None else max_tokens,
         },
     )
+    elapsed = time.monotonic() - start
+    tag = f"chat({label})" if label else "chat()"
+    log.info("%s took %.1fs", tag, elapsed)
     return (resp["message"]["content"] or "").strip()

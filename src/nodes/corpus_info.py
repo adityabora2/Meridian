@@ -2,10 +2,14 @@ from __future__ import annotations
 
 try:
     from src.ingest import load_index
+    from src.logging_config import get_logger
     from src.state import RAGState
 except ImportError:
     from ingest import load_index  # type: ignore
+    from logging_config import get_logger  # type: ignore
     from state import RAGState  # type: ignore
+
+log = get_logger("corpus_info")
 
 
 def corpus_info(state: RAGState) -> RAGState:
@@ -35,5 +39,6 @@ def corpus_info(state: RAGState) -> RAGState:
     answer = (
         f"There are {len(seen)} document(s) indexed:\n" + "\n".join(lines)
     )
+    log.info("corpus listing -> %d document(s)", len(seen))
     trace.append(f"corpus_info → {len(seen)} document(s)")
     return {"answer": answer, "citations": [], "trace": trace}

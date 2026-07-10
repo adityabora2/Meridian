@@ -3,11 +3,15 @@ from __future__ import annotations
 import re
 
 try:
+    from src.logging_config import get_logger
     from src.nodes.llm import chat
     from src.state import RAGState
 except ImportError:
+    from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
+
+log = get_logger("decompose")
 
 
 _SYSTEM = """You break down a hard, multi-hop question about a collection of indexed \
@@ -39,9 +43,13 @@ def _parse_sub_questions(raw: str, *, fallback: str) -> list[str]:
 
 def decompose(state: RAGState) -> RAGState:
     question = state["question"]
-    raw = chat(_SYSTEM, question)
+    raw = chat(_SYSTEM, question, label="decompose")
     sub_questions = _parse_sub_questions(raw, fallback=question)
 
+    log.info("decomposed into %d sub-question(s)", len(sub_questions))
+    if log.isEnabledFor(10):
+        for i, sq in enumerate(sub_questions, 1):
+            log.debug("  sub-q %d: %s", i, sq)
     trace = list(state.get("trace", []))
     trace.append(f"decompose → {len(sub_questions)} sub-question(s)")
     return {"sub_questions": sub_questions, "trace": trace}

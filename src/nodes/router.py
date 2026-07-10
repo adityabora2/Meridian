@@ -4,14 +4,18 @@ import re
 
 try:
     from src import config
+    from src.logging_config import get_logger
     from src.nodes.llm import chat
     from src.state import RAGState
     from src.ingest import match_document
 except ImportError:
     import config  # type: ignore
+    from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
     from ingest import match_document  # type: ignore
+
+log = get_logger("router")
 
 
 _SYSTEM = """You are a query-complexity router for a document Q&A system over an \
@@ -85,6 +89,7 @@ def route_question(state: RAGState) -> RAGState:
     # Deterministic meta detection runs BEFORE the LLM router -- corpus-listing
     # questions are answered by corpus_info, not classified by the small model.
     if is_meta_question(question):
+        log.info("Q=%r route=meta (deterministic corpus question)", question[:70])
         trace.append("router → meta")
         return {
             "route": config.ROUTE_META,
@@ -93,8 +98,9 @@ def route_question(state: RAGState) -> RAGState:
             "trace": trace,
         }
 
-    raw = chat(_SYSTEM, question, max_tokens=8)
+    raw = chat(_SYSTEM, question, max_tokens=8, label="router")
     label = _parse_label(raw)
+    log.debug("router raw LLM reply: %r", raw)
 
     if label is None:
         label = config.ROUTE_MEDIUM
@@ -107,7 +113,10 @@ def route_question(state: RAGState) -> RAGState:
         matched = match_document(question)
         if matched:
             label = config.ROUTE_MEDIUM
+            log.info("Q=%r route=easy upgraded to medium (names %s)", question[:70], matched)
             trace.append(f"router → easy upgraded to medium (names {matched})")
+
+    log.info("Q=%r route=%s", question[:70], label)
 
     return {
         "route": label,

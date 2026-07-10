@@ -556,6 +556,12 @@ def self_test() -> None:
 
 
 def main() -> None:
+    try:
+        from src.logging_config import setup_logging
+    except ImportError:
+        from logging_config import setup_logging  # type: ignore
+    setup_logging()
+
     parser = argparse.ArgumentParser(description="Build the FAISS index from data/documents/.")
     parser.add_argument(
         "--self-test",

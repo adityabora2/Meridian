@@ -3,11 +3,15 @@ from __future__ import annotations
 import re
 
 try:
+    from src.logging_config import get_logger
     from src.nodes.llm import chat
     from src.state import RAGState
 except ImportError:
+    from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
+
+log = get_logger("critique")
 
 
 _SYSTEM = """You verify whether an answer is fully supported by the numbered evidence \
@@ -79,9 +83,14 @@ def critique(state: RAGState) -> RAGState:
         f"Question: {question}\n\nAnswer:\n{answer}\n\nEvidence:\n{evidence}\n\n"
         "Verdict:"
     )
-    raw = chat(_SYSTEM, user)
+    raw = chat(_SYSTEM, user, label="critique")
     clean, claims = _parse_critique(raw)
 
+    log.info("verdict=%s%s", "clean" if clean else "unsupported",
+             "" if clean else f" ({len(claims)} unsupported claim(s))")
+    if log.isEnabledFor(10) and not clean:
+        for c in claims:
+            log.debug("  unsupported: %s", c)
     trace.append(
         "critique → clean" if clean else f"critique → unsupported ({len(claims)} claim(s))"
     )

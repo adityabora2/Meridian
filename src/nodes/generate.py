@@ -3,11 +3,15 @@ from __future__ import annotations
 import re
 
 try:
+    from src.logging_config import get_logger
     from src.nodes.llm import chat
     from src.state import RAGState
 except ImportError:
+    from logging_config import get_logger  # type: ignore
     from nodes.llm import chat  # type: ignore
     from state import RAGState  # type: ignore
+
+log = get_logger("generate")
 
 
 _SYSTEM = """You answer questions strictly from the numbered evidence provided. Rules:
@@ -37,6 +41,7 @@ def generate(state: RAGState) -> RAGState:
     trace = list(state.get("trace", []))
 
     if not retrieved:
+        log.info("no evidence retrieved -> cannot answer from documents")
         trace.append("generate → no evidence")
         return {
             "answer": "I couldn't find relevant evidence in the indexed documents to answer this.",
@@ -46,7 +51,7 @@ def generate(state: RAGState) -> RAGState:
 
     evidence = _format_evidence(retrieved)
     user = f"Question: {state['question']}\n\nEvidence:\n{evidence}\n\nAnswer with inline [n] citations:"
-    answer = chat(_SYSTEM, user)
+    answer = chat(_SYSTEM, user, label="generate")
 
     cited = _cited_indices(answer, len(retrieved))
     citations = []
@@ -63,5 +68,9 @@ def generate(state: RAGState) -> RAGState:
             }
         )
 
+    log.info("%d evidence chunks -> answer with %d citation(s)", len(retrieved), len(citations))
+    if log.isEnabledFor(10):
+        for c in citations:
+            log.debug("  cite [%s] %s p%s", c["marker"], c["document_name"], c["page_number"])
     trace.append(f"generate → answer with {len(citations)} citation(s)")
     return {"answer": answer, "citations": citations, "trace": trace}

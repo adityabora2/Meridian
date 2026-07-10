@@ -3,6 +3,9 @@ from __future__ import annotations
 import streamlit as st
 
 from src.graph import build_graph
+from src.logging_config import setup_logging
+
+setup_logging()
 
 st.set_page_config(page_title="Adaptive RAG", layout="centered")
 

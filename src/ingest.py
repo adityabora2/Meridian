@@ -24,6 +24,7 @@ class Chunk:
     page_number: int
     section_heading: str
     document_name: str
+    document_title: str
 
 
 @lru_cache(maxsize=1)
@@ -67,6 +68,67 @@ def _detect_body_font_size(doc: "fitz.Document", sample_pages: int = 5) -> float
     if not size_char_counts:
         return 10.0
     return max(size_char_counts, key=lambda s: size_char_counts[s])
+
+
+_TITLE_LINE_SIZE_TOLERANCE = 0.85
+
+
+def _extract_horizontal_title_lines(page: "fitz.Page") -> list[tuple[float, str]]:
+    """Returns (max_font_size, merged_text) for each horizontal text line on
+    the page, in reading order.
+
+    Two real-world PDF quirks motivate grouping by line instead of returning
+    raw spans (as `_extract_font_spans` does):
+
+    1. Preprint PDFs (e.g. arXiv) commonly stamp a rotated sidebar (the
+       "arXiv:..." watermark) along the page edge as a single large-font
+       span. That stamp is not part of the document's title/heading layout,
+       so non-horizontal lines are excluded entirely.
+    2. Some papers typeset their title in a small-caps style where the first
+       letter of each word is a larger font than the rest of the word (e.g.
+       "ALBERT" rendered as spans of size 17 ("A") + size 13.8 ("LBERT")).
+       Picking only the single largest *span* size would grab just the
+       leading letters and drop the rest. Grouping spans by line and using
+       each line's max size keeps the whole line intact.
+    """
+    raw = page.get_text("dict")
+    lines: list[tuple[float, str]] = []
+    for block in raw.get("blocks", []):
+        for line in block.get("lines", []):
+            direction = line.get("dir", (1.0, 0.0))
+            if abs(direction[0]) < 0.99:
+                continue  # not (close to) horizontal; skip rotated/vertical text
+            texts: list[str] = []
+            sizes: list[float] = []
+            for span in line.get("spans", []):
+                text = (span.get("text") or "")
+                if text.strip():
+                    texts.append(text)
+                    sizes.append(span.get("size", 0.0))
+            if texts:
+                # Join without inserting spaces: small-caps titles split one
+                # word across spans of different sizes (e.g. "A" + "LBERT"),
+                # and spans already carry their own internal spacing.
+                lines.append((max(sizes), "".join(texts).strip()))
+    return lines
+
+
+def _extract_title(doc: "fitz.Document", pdf_path: Path) -> str:
+    metadata_title = (doc.metadata or {}).get("title", "").strip()
+    if metadata_title and metadata_title.lower() != pdf_path.stem.lower():
+        return metadata_title
+
+    if len(doc) > 0:
+        lines = _extract_horizontal_title_lines(doc[0])
+        if lines:
+            max_size = max(size for size, _ in lines)
+            threshold = max_size * _TITLE_LINE_SIZE_TOLERANCE
+            title_lines = [text for size, text in lines if size >= threshold]
+            candidate = " ".join(title_lines).strip()
+            if candidate:
+                return candidate
+
+    return pdf_path.stem
 
 
 _HEADING_SIZE_RATIO = 1.08
@@ -162,6 +224,12 @@ def chunk_text(text: str) -> list[str]:
 
 def build_chunks(pdf_path: Path) -> list[Chunk]:
     document_name = pdf_path.name
+    doc = fitz.open(pdf_path)
+    try:
+        document_title = _extract_title(doc, pdf_path)
+    finally:
+        doc.close()
+
     chunks: list[Chunk] = []
     per_page_counter: dict[int, int] = {}
     for page_number, heading, text in parse_pdf(pdf_path):
@@ -176,6 +244,7 @@ def build_chunks(pdf_path: Path) -> list[Chunk]:
                     page_number=page_number,
                     section_heading=heading,
                     document_name=document_name,
+                    document_title=document_title,
                 )
             )
     return chunks
@@ -305,7 +374,10 @@ def self_test() -> None:
 
         chunks = build_chunks(pdf)
         assert chunks, "no chunks produced"
-        assert all(c.chunk_id and c.document_name == "synthetic.pdf" for c in chunks)
+        assert all(
+            c.chunk_id and c.document_name == "synthetic.pdf" and c.document_title
+            for c in chunks
+        )
         assert all(c.page_number >= 1 for c in chunks)
         headings = {c.section_heading for c in chunks}
         print(f"Parsed {len(chunks)} chunks; detected headings: {sorted(headings)}")

@@ -15,7 +15,7 @@ any retrieved document."""
 
 
 def direct_answer(state: RAGState) -> RAGState:
-    answer = chat(_SYSTEM, state["question"])
+    answer = chat(_SYSTEM, state["question"], label="direct_answer")
     trace = list(state.get("trace", []))
     trace.append("direct_answer (no retrieval)")
     return {"answer": answer, "citations": [], "trace": trace}

@@ -15,3 +15,5 @@ data/documents/*.pdf
 
 # OS
 .DS_Store
+Adaptive_Rag_System_Project_Context.md
+docs/superpowers/plans/2026-07-11-query-handling-fixes.md

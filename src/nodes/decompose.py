@@ -28,7 +28,7 @@ _MAX_SUB_QUESTIONS = 3
 
 # Strips a leading numbering/bullet marker (e.g. "1. ", "2) ", "- ", "* ") in case
 # the LLM ignores the "no numbering, no bullets" instruction — keeps decompose's
-# fallback handling symmetric with critique.py's claim-bullet stripping, since both
+# fallback handling symmetric with verify.py's claim-bullet stripping, since both
 # outputs land as raw FAISS query text in search_node.
 _LEADING_MARKER_RE = re.compile(r"^(?:\d+[.)]|[-*])\s*")
 

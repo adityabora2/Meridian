@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.graph import build_graph
-from src.logging_config import setup_logging
+from meridian.graph import build_graph
+from meridian.logging_config import setup_logging
 
 setup_logging()
 
-st.set_page_config(page_title="Adaptive RAG", layout="centered")
+st.set_page_config(page_title="Meridian — Adaptive RAG", layout="centered")
 
 
 @st.cache_resource
@@ -48,8 +48,10 @@ def _render_answer(result: dict) -> None:
 
     with st.expander("How this answer was produced"):
         st.write(f"Mode: {result.get('mode_label', route)}")
-        if route == "hard":
-            st.write(f"Iterations: {result.get('iterations', 0)}")
+        if route in ("medium", "hard"):
+            # Both retrieval modes now report a meaningful count: iterations are
+            # answer attempts, written only by generate.
+            st.write(f"Answer attempts: {result.get('iterations', 0)}")
             st.write(f"Verified clean: {result.get('critique_clean')}")
         trace = result.get("trace", [])
         if trace:
@@ -58,7 +60,7 @@ def _render_answer(result: dict) -> None:
                 st.write(f"{i}. {step}")
 
 
-st.title("Adaptive RAG")
+st.title("Meridian")
 st.caption(
     "Ask a question about your documents. The system decides on its own how "
     "much retrieval and verification each question needs, then answers."
@@ -82,7 +84,9 @@ if question:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                result = _graph().invoke({"question": question, "trace": []})
+                # `trace` and `retrieved` are reducer channels; LangGraph seeds
+                # them, so only the question is passed in.
+                result = _graph().invoke({"question": question})
             except Exception as exc:
                 st.error(f"Something went wrong: {exc}")
                 result = None

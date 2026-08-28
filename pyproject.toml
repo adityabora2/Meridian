@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meridian"
+version = "0.1.0"
+description = "Adaptive RAG: routes each query by complexity before retrieving."
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+meridian-ingest = "meridian.ingest.__main__:main"
+
+[tool.setuptools]
+packages = ["meridian", "meridian.nodes", "meridian.ingest"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# test_questions.py is the LIVE harness (needs Ollama + a built index); it is a
+# __main__ script, not a pytest module, so it is excluded from collection.
+addopts = "--ignore=tests/test_questions.py"
+filterwarnings = [
+    "ignore::DeprecationWarning:faiss.*",
+]
